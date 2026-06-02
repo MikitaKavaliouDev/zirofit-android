@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.hilt.navigation.compose.hiltViewModel
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 import androidx.core.content.ContextCompat
@@ -61,6 +62,9 @@ import com.ziro.fit.model.WorkoutSetUi
 import com.ziro.fit.ui.components.ExerciseBrowserContent
 import com.ziro.fit.ui.theme.*
 import com.ziro.fit.ui.workouts.WorkoutSuccessContent
+import com.ziro.fit.model.VoiceCoachConnectionState
+import com.ziro.fit.viewmodel.VoiceTrainingViewModel
+import com.ziro.fit.viewmodel.VoiceTrainingUiState
 import com.ziro.fit.viewmodel.WorkoutViewModel
 
 enum class SessionFocusField { WEIGHT, REPS, RPE }
@@ -128,9 +132,12 @@ private fun SupersetHeader(superSetId: String) {
 @Composable
 fun LiveWorkoutScreen(
     viewModel: WorkoutViewModel,
+    voiceCoachViewModel: VoiceTrainingViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
+    val voiceState by voiceCoachViewModel.uiState.collectAsState()
+
      var showExerciseSheet by remember { mutableStateOf(false) }
      var showCancelDialog by remember { mutableStateOf(false) }
      var showFinishDialog by remember { mutableStateOf(false) }
@@ -164,6 +171,15 @@ fun LiveWorkoutScreen(
         }
     }
 
+    // Voice Coach: RECORD_AUDIO permission
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            voiceCoachViewModel.start(context as Activity)
+        }
+    }
+
     LaunchedEffect(Unit) {
         val permissionsToRequest = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -180,6 +196,7 @@ fun LiveWorkoutScreen(
             launcher.launch(permissionsToRequest.toTypedArray())
         }
         viewModel.loadExercises()
+        voiceCoachViewModel.configure()
     }
 
     LaunchedEffect(state.activeSession, state.isLoading, state.workoutSuccessStats) {
@@ -400,6 +417,60 @@ fun LiveWorkoutScreen(
                         }
                         speechRecognizerLauncher.launch(intent)
                     }
+                )
+            }
+
+            // ── Voice Coach Floating Button ──
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 100.dp),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                VoiceCoachButton(
+                    connectionState = voiceState.connectionState,
+                    onTap = {
+                        when (voiceState.connectionState) {
+                            VoiceCoachConnectionState.DISCONNECTED -> {
+                                if (ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.RECORD_AUDIO
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    voiceCoachViewModel.toggle(context as Activity)
+                                } else {
+                                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            }
+                            VoiceCoachConnectionState.ERROR -> {
+                                voiceCoachViewModel.toggle(context as Activity)
+                            }
+                            VoiceCoachConnectionState.CONNECTED -> {
+                                voiceCoachViewModel.stop()
+                            }
+                            VoiceCoachConnectionState.CONNECTING -> {
+                                // No action while connecting
+                            }
+                        }
+                    }
+                )
+            }
+
+            // ── Voice Coach Overlay ──
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+            ) {
+                VoiceCoachOverlay(
+                    visible = voiceState.connectionState == VoiceCoachConnectionState.CONNECTED,
+                    connectionState = voiceState.connectionState,
+                    agentState = voiceState.agentState,
+                    audioLevel = voiceState.audioLevel,
+                    messages = voiceState.messages,
+                    onDisconnect = { voiceCoachViewModel.stop() },
+                    onDismiss = { voiceCoachViewModel.stop() }
                 )
             }
 

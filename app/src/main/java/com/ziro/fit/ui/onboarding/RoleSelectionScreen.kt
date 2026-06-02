@@ -3,6 +3,7 @@ package com.ziro.fit.ui.onboarding
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.ActivityResultLauncher
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -241,7 +242,7 @@ private fun DetailsStepContent(
     location: String,
     bio: String,
     showLocationPicker: Boolean,
-    photoPickerLauncher: androidx.activity.result.contract.ActivityResultLauncher<androidx.activity.result.PickVisualMediaRequest>,
+    photoPickerLauncher: ActivityResultLauncher<PickVisualMediaRequest>,
     onNameChange: (String) -> Unit,
     onLocationChange: (String?) -> Unit,
     onBioChange: (String?) -> Unit,

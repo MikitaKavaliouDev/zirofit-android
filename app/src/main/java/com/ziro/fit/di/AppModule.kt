@@ -15,14 +15,13 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import javax.inject.Singleton
 import kotlinx.coroutines.runBlocking
-import java.util.concurrent.TimeUnit
 
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
-        private const val BASE_URL = "http://10.0.2.2:3321/"
-// private const val BASE_URL = "https://ziro.fit/"
+//        private const val BASE_URL = "http://10.0.2.2:3321/"
+ private const val BASE_URL = "https://ziro.fit/"
     private const val TAG = "ZiroAPI"
 
     @Provides

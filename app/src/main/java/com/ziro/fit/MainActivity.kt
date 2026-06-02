@@ -396,7 +396,7 @@ fun ClientAppScreen(
     // Navigate to trainer finding wizard if onboarding was just completed
     LaunchedEffect(authViewModel.justCompletedOnboarding) {
         if (authViewModel.justCompletedOnboarding) {
-            authViewModel.justCompletedOnboarding = false
+            authViewModel.resetJustCompletedOnboarding()
             navController.navigate("trainer_finding_onboarding") {
                 popUpTo("client_dashboard")
             }

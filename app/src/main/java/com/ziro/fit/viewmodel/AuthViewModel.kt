@@ -77,6 +77,10 @@ constructor(
     var justCompletedOnboarding by mutableStateOf(false)
         private set
 
+    fun resetJustCompletedOnboarding() {
+        justCompletedOnboarding = false
+    }
+
     private var trainerUserId: String? = null
     private var personalUserId: String? = null
 

@@ -488,6 +488,10 @@ interface ZiroApi {
     ): ApiResponse<ExploreFeaturedResponse>
 
     // Analytics
+    // Lightweight polling for ElevenLabs voice training session
+    @GET("api/client/active-workout")
+    suspend fun getActiveWorkoutStatus(): ApiResponse<ActiveWorkoutStatus>
+
     @GET("api/client/analytics")
     suspend fun getClientAnalytics(
         @Query("days") days: Int = 30

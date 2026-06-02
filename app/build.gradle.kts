@@ -144,5 +144,8 @@ dependencies {
 
     // Browser
     implementation(libs.androidx.browser)
+
+    // ElevenLabs Conversational AI SDK
+    implementation("io.elevenlabs:elevenlabs-android:0.9.0")
 }
       

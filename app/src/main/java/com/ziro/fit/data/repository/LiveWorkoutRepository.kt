@@ -1,6 +1,7 @@
 package com.ziro.fit.data.repository
 
 import com.ziro.fit.data.remote.ZiroApi
+import com.ziro.fit.model.ActiveWorkoutStatus
 import com.ziro.fit.model.Exercise
 import com.ziro.fit.model.GetExercisesResponse
 import com.ziro.fit.model.LiveWorkoutUiModel
@@ -106,6 +107,21 @@ class LiveWorkoutRepository @Inject constructor(
         }
     }
     
+    /**
+     * Lightweight polling call for ElevenLabs voice training session.
+     * Mirrors iOS: GET /api/client/active-workout
+     * Returns minimal payload to detect state transitions.
+     */
+    suspend fun getActiveWorkoutStatus(): Result<ActiveWorkoutStatus> {
+        return try {
+            val response = api.getActiveWorkoutStatus()
+            Result.success(response.data!!)
+        } catch (e: Exception) {
+            val apiError = ApiErrorParser.parse(e)
+            Result.failure(Exception(ApiErrorParser.getErrorMessage(apiError)))
+        }
+    }
+
     suspend fun getExercises(query: String?, page: Int = 1): Result<GetExercisesResponse> {
         return try {
             val response = api.getExercises(search = query, page = page)
