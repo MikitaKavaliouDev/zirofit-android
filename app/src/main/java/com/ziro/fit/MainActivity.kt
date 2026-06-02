@@ -442,9 +442,6 @@ fun ClientAppScreen(
                                 launchSingleTop = true
                                 restoreState = true
                             }
-                        },
-                        onModeSwitch = { newMode ->
-                            authViewModel.setMode(newMode)
                         }
                     )
                 }
@@ -694,6 +691,8 @@ fun ClientAppScreen(
                 }
                 composable("profile") {
                     com.ziro.fit.ui.profile.ClientProfileScreen(
+                        currentMode = authViewModel.activeMode,
+                        onModeSwitch = { authViewModel.setMode(it) },
                         onLogout = { authViewModel.logout() }
                     )
                 }
@@ -843,9 +842,6 @@ fun MainAppScreen(authViewModel: AuthViewModel, onLogout: () -> Unit) {
                                 launchSingleTop = true
                                 restoreState = true
                             }
-                        },
-                        onModeSwitch = { newMode ->
-                            authViewModel.setMode(newMode)
                         }
                     )
                 }
@@ -1086,6 +1082,8 @@ fun MainAppScreen(authViewModel: AuthViewModel, onLogout: () -> Unit) {
                 }
                 composable("more") {
                     com.ziro.fit.ui.more.MoreScreen(
+                        currentMode = authViewModel.activeMode,
+                        onModeSwitch = { authViewModel.setMode(it) },
                         onNavigateToAssessments = { navController.navigate("assessments_library") },
                         onNavigateToBookings = { navController.navigate("bookings_list") },
                         onNavigateToCheckIns = { navController.navigate("checkins_list") },

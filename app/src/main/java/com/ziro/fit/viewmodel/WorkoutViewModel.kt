@@ -97,7 +97,8 @@ enum class VoiceCommandType {
      private val voiceFeedbackManager: VoiceFeedbackManager,
      private val calendarRepository: com.ziro.fit.data.repository.CalendarRepository,
      private val clientRepository: com.ziro.fit.data.repository.ClientRepository,
-     private val tokenManager: TokenManager
+     private val tokenManager: TokenManager,
+     private val realtimeService: WorkoutRealtimeService
  ) : ViewModel() {
     private val _uiState = MutableStateFlow(WorkoutUiState())
     val uiState: StateFlow<WorkoutUiState> = _uiState.asStateFlow()
@@ -117,6 +118,15 @@ enum class VoiceCommandType {
                         restTotalSeconds = managerState.restTotalSeconds,
                         restingExerciseId = managerState.restingExerciseId
                     )
+                }
+            }
+        }
+        // Listen for agent-driven session updates from WorkoutRealtimeService
+        viewModelScope.launch {
+            realtimeService.activeSession.collect { session ->
+                if (session != null && !_uiState.value.isLoading) {
+                    val merged = mergeSessions(session, workoutStateManager.state.value.activeSession)
+                    workoutStateManager.updateSession(merged)
                 }
             }
         }
