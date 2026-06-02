@@ -487,6 +487,16 @@ interface ZiroApi {
         @Query("cityId") cityId: String? = null
     ): ApiResponse<ExploreFeaturedResponse>
 
+    @GET("api/explore/promoted-trainers")
+    suspend fun getPromotedTrainers(
+        @Query("category") category: String? = null
+    ): ApiResponse<PromotedTrainersResponse>
+
+    @POST("api/notifications/subscribe")
+    suspend fun subscribeToNotifications(
+        @Body request: SubscribeNotificationsRequest
+    ): ApiResponse<Any>
+
     // Analytics
     // Lightweight polling for ElevenLabs voice training session
     @GET("api/client/active-workout")

@@ -26,7 +26,8 @@ import com.ziro.fit.service.SyncManager
  import com.ziro.fit.service.WorkoutRealtimeService
  import com.ziro.fit.util.VoiceFeedbackManager
  import dagger.hilt.android.lifecycle.HiltViewModel
- import kotlinx.coroutines.flow.MutableStateFlow
+ import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -102,6 +103,9 @@ enum class VoiceCommandType {
  ) : ViewModel() {
     private val _uiState = MutableStateFlow(WorkoutUiState())
     val uiState: StateFlow<WorkoutUiState> = _uiState.asStateFlow()
+
+    // Track the current exercise search job so rapid keystrokes cancel previous in-flight requests
+    private var searchJob: Job? = null
 
     // Accumulate PRs during session — mirrors iOS sessionNewRecords
     private val _sessionNewRecords = mutableStateListOf<NewRecord>()
@@ -540,14 +544,15 @@ enum class VoiceCommandType {
     }
 
     fun loadExercises(query: String? = null) {
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             _uiState.update { it.copy(isExercisesLoading = true) }
             repository.getExercises(query)
                 .onSuccess { response ->
                     _uiState.update { it.copy(availableExercises = response.exercises, isExercisesLoading = false) }
                 }
-                .onFailure {
-                    _uiState.update { it.copy(isExercisesLoading = false) }
+                .onFailure { e ->
+                    _uiState.update { it.copy(isExercisesLoading = false, error = e.localizedMessage ?: "Failed to load exercises") }
                 }
         }
     }

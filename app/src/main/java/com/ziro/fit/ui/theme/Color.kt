@@ -12,6 +12,21 @@ val ZiroSocialButtonBg = Color.White
 val ZiroSocialButtonStroke = Color.Gray.copy(alpha = 0.3f)
 val ZiroSocialButtonText = Color.Black
 
+// Explore-specific colors (iOS-matching)
+val SpotlightGradientStart = Color(0xFF141E3D)
+val SpotlightGradientEnd = Color(0xFF08081E)
+val CapsuleBackground = Color(0xFF2C353E)
+val TrendingTagBg = Color(0xFF1E88E5).copy(alpha = 0.07f)
+val TrendingTagBorder = Color(0xFF1E88E5).copy(alpha = 0.12f)
+val ExplorePurple = Color(0xFF7C4DFF)
+val ExploreOrange = Color(0xFFFF9800)
+val SellingFastOrange = Color(0xFFFF6D00)
+val HighlightBlueBg = Color(0xFF1E88E5).copy(alpha = 0.08f)
+val MapCardBlue = Color(0xFF1565C0)
+val CapacityBarBg = Color.White.copy(alpha = 0.2f)
+val PremiumButtonBg = Color.White.copy(alpha = 0.18f)
+val SparkGlowPurple = Color(0xFF9C27B0).copy(alpha = 0.18f)
+
 // Existing Strong App Theme Colors (preserved)
 val StrongBackground = Color(0xFF1B2228)
 val StrongSurface = Color(0xFF1B2228)

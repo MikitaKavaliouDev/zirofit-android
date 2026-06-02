@@ -53,14 +53,16 @@ data class ExploreEvent(
     val isNearCapacity: Boolean?,
     val trainer: EventTrainer?,
     val status: String? = null,
-    val rejectionReason: String? = null
+    val rejectionReason: String? = null,
+    val organizerType: String? = null,
+    val highlights: List<String>? = null
 ) {
     val resolvedHostName: String?
         get() = hostName ?: trainerName ?: trainer?.name
-        
+
     val isFull: Boolean
         get() = (enrolledCount ?: 0) >= (capacity ?: 1)
-        
+
     val spotsLeft: Int
         get() = maxOf(0, (capacity ?: 0) - (enrolledCount ?: 0))
 
@@ -106,4 +108,39 @@ data class TrainerEventsListResponse(
 
 data class EventCreateResponse(
     val event: ExploreEvent
+)
+
+data class PromotedTrainersResponse(
+    val trainers: List<PromotedTrainerSummary>
+)
+
+data class PromotedTrainerSummary(
+    val id: String,
+    val name: String,
+    val username: String?,
+    val avatarUrl: String?,
+    val rating: Double?,
+    val isVerified: Boolean?,
+    val specialties: List<String>?,
+    val promotionCategory: String? = null,
+    val promotedAt: String? = null
+) {
+    fun toTrainerSummary(): TrainerSummary {
+        return TrainerSummary(
+            id = id,
+            name = name,
+            username = username,
+            profile = TrainerProfileSummary(
+                profilePhotoPath = avatarUrl,
+                certifications = specialties?.joinToString(", "),
+                averageRating = rating,
+                locations = null,
+                services = null
+            )
+        )
+    }
+}
+
+data class SubscribeNotificationsRequest(
+    val topic: String
 )

@@ -9,6 +9,7 @@ import com.ziro.fit.model.CreateWorkoutTemplateRequest
 import com.ziro.fit.model.Exercise
 import androidx.lifecycle.SavedStateHandle
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,6 +47,8 @@ class CreateTemplateViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(CreateTemplateUiState())
     val uiState: StateFlow<CreateTemplateUiState> = _uiState.asStateFlow()
+
+    private var searchJob: Job? = null
 
     init {
         loadExercises()
@@ -103,14 +106,15 @@ class CreateTemplateViewModel @Inject constructor(
     }
 
     fun loadExercises(query: String? = null) {
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             _uiState.update { it.copy(isExercisesLoading = true) }
             liveWorkoutRepository.getExercises(query)
                 .onSuccess { response ->
                     _uiState.update { it.copy(availableExercises = response.exercises, isExercisesLoading = false) }
                 }
-                .onFailure {
-                    _uiState.update { it.copy(isExercisesLoading = false) }
+                .onFailure { e ->
+                    _uiState.update { it.copy(isExercisesLoading = false, error = e.localizedMessage ?: "Failed to load exercises") }
                 }
         }
     }

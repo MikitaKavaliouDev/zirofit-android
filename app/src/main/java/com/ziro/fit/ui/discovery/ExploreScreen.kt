@@ -1,5 +1,6 @@
 package com.ziro.fit.ui.discovery
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -14,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -23,10 +25,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.ziro.fit.model.*
+import com.ziro.fit.ui.discovery.components.*
 import com.ziro.fit.ui.theme.*
 import com.ziro.fit.viewmodel.ExploreViewModel
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExploreScreen(
     onNavigateToEvent: (String) -> Unit,
@@ -36,163 +39,316 @@ fun ExploreScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    Scaffold(
-        topBar = {
-            ExploreHeader(
-                selectedCity = uiState.selectedCity,
-                onCityClick = { /* Show City Picker Dialog */ },
-                onMapClick = onNavigateToMap
-            )
-        },
-        containerColor = StrongBackground
-    ) { padding ->
-        if (uiState.isLoading && uiState.featuredTrainers.isEmpty() && uiState.featuredEvents.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = StrongBlue)
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(bottom = 100.dp)
-            ) {
-                // 1. Featured Trainers Carousel - FIRST (always first)
-                if (uiState.featuredTrainers.isNotEmpty()) {
-                    item {
-                        SectionHeaderWithAction(
-                            title = "Featured Trainers",
-                            onSeeAllClick = onNavigateToMap
-                        )
-                    }
-                    item {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            items(uiState.featuredTrainers) { trainer ->
-                                InteractiveTrainerCard(
-                                    trainer = trainer,
-                                    onClick = { onNavigateToTrainer(trainer.id) }
-                                )
-                            }
-                        }
-                    }
-                }
+    var showCityPicker by remember { mutableStateOf(false) }
+    var exploreTab by remember { mutableStateOf(ExploreTab.Trainers) }
 
-                // 2. All Trainers Section (after featured)
-                if (uiState.allTrainers.isNotEmpty()) {
-                    item {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        SectionHeaderWithAction(
-                            title = if (uiState.featuredTrainers.isNotEmpty()) "All Specialists" else "Find a Specialist",
-                            onSeeAllClick = onNavigateToMap
-                        )
-                    }
-                    items(uiState.allTrainers.take(10)) { trainer ->
-                        CompactTrainerCard(
-                            trainer = trainer,
-                            onClick = { onNavigateToTrainer(trainer.id) }
-                        )
-                    }
-                    if (uiState.allTrainers.size > 10) {
-                        item {
-                            TextButton(
-                                onClick = onNavigateToMap,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("View All ${uiState.allTrainers.size} Specialists", color = StrongBlue)
-                            }
-                        }
-                    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(StrongBackground)
+    ) {
+        PullToRefreshBox(
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = viewModel::refreshContent,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (uiState.isLoading && uiState.featuredTrainers.isEmpty() && uiState.featuredEvents.isEmpty()
+                && uiState.nearbyTrainers.isEmpty() && uiState.sortedDateKeys.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = StrongBlue)
                 }
-
-                // 3. Featured Events Carousel
-                if (uiState.featuredEvents.isNotEmpty()) {
-                    item {
-                        Spacer(modifier = Modifier.height(24.dp))
-                        SectionHeaderWithAction(
-                            title = "Featured Events",
-                            onSeeAllClick = { /* Navigate to all events */ }
-                        )
-                    }
-                    item {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            items(uiState.featuredEvents) { event ->
-                                InteractiveEventCard(
-                                    event = event,
-                                    onClick = { onNavigateToEvent(event.id) }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // 4. Category Filter
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = 75.dp, bottom = 100.dp)
+                ) {
+                // ── Sliding Segmented Control ──
                 item {
-                    Spacer(modifier = Modifier.height(24.dp))
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(uiState.categories) { category ->
-                            FilterChip(
-                                selected = uiState.selectedCategory?.id == category.id,
-                                onClick = { viewModel.selectCategory(category) },
-                                label = { Text(category.name) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = StrongBlue,
-                                    labelColor = Color.White,
-                                    selectedLabelColor = Color.White
+                    ExploreSlidingSegment(
+                        selectedTab = exploreTab,
+                        onTabSelected = { exploreTab = it },
+                        modifier = Modifier.padding(top = 10.dp, bottom = 16.dp)
+                    )
+                }
+
+                // ── TRAINERS TAB ──
+                if (exploreTab == ExploreTab.Trainers) {
+                    // 1. Spotlight Specialist Hero Card
+                    val spotlightTrainer = uiState.featuredTrainers.firstOrNull()
+                        ?: uiState.nearbyTrainers.firstOrNull()
+                    if (spotlightTrainer != null) {
+                        item {
+                            SectionHeaderWithAction(
+                                title = "Featured Specialist",
+                                onSeeAllClick = onNavigateToMap
+                            )
+                        }
+                        item {
+                            TrainerSpotlightHeroCard(
+                                trainer = spotlightTrainer,
+                                onClick = { onNavigateToTrainer(spotlightTrainer.id) },
+                                modifier = Modifier.padding(bottom = 24.dp)
+                            )
+                        }
+                    }
+
+                    // 2. Browse by Category + Trending Tags
+                    if (uiState.categories.isNotEmpty()) {
+                        item {
+                            Text(
+                                "Browse by Category",
+                                color = Color.White,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(uiState.categories) { category ->
+                                    FilterChip(
+                                        selected = uiState.selectedCategory?.id == category.id,
+                                        onClick = { viewModel.selectCategory(category) },
+                                        label = { Text(category.name) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = StrongBlue,
+                                            labelColor = Color.White,
+                                            selectedLabelColor = Color.White
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                        item {
+                            TrendingTagsRow(
+                                onTagClick = { onNavigateToMap() },
+                                modifier = Modifier.padding(vertical = 16.dp)
+                            )
+                        }
+                    }
+
+                    // 3. Trainers Near You
+                    if (uiState.nearbyTrainers.isNotEmpty()) {
+                        item {
+                            HStack {
+                                Text(
+                                    "Trainers Near You",
+                                    color = Color.White,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 16.dp)
                                 )
+                                Spacer(modifier = Modifier.weight(1f))
+                                TextButton(onClick = onNavigateToMap) {
+                                    Text("See All", color = StrongBlue, fontSize = 14.sp)
+                                }
+                            }
+                        }
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                items(uiState.nearbyTrainers) { trainer ->
+                                    InteractiveTrainerCard(
+                                        trainer = trainer,
+                                        onClick = { onNavigateToTrainer(trainer.id) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 4. Featured Trainers
+                    if (uiState.featuredTrainers.isNotEmpty()) {
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            SectionHeaderWithAction(
+                                title = "Featured Trainers",
+                                onSeeAllClick = onNavigateToMap
+                            )
+                        }
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                items(uiState.featuredTrainers) { trainer ->
+                                    InteractiveTrainerCard(
+                                        trainer = trainer,
+                                        onClick = { onNavigateToTrainer(trainer.id) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 5. Ziro Recommends
+                    if (uiState.recommendedTrainers.isNotEmpty()) {
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            SectionHeaderWithAction(
+                                title = "Ziro Recommends",
+                                onSeeAllClick = onNavigateToMap
+                            )
+                        }
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                items(uiState.recommendedTrainers) { trainer ->
+                                    InteractiveTrainerCard(
+                                        trainer = trainer,
+                                        onClick = { onNavigateToTrainer(trainer.id) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 6. Map Spotlight Preview Card
+                    val totalCount = uiState.nearbyTrainers.size + uiState.featuredTrainers.size
+                    if (totalCount > 0) {
+                        item {
+                            MapSpotlightPreviewCard(
+                                trainerCount = totalCount,
+                                onOpenMap = onNavigateToMap,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 20.dp)
                             )
                         }
                     }
                 }
 
-                // 5. Upcoming Events - Grouped by Date
-                if (uiState.upcomingEvents.isEmpty() && !uiState.isLoading) {
-                    item {
-                        Spacer(modifier = Modifier.height(32.dp))
-                        EmptyStateView(
-                            icon = Icons.Default.EventBusy,
-                            title = "No Upcoming Events",
-                            subtitle = "Check back later for new workshops and meetups"
-                        )
-                    }
-                } else {
-                    uiState.upcomingEvents.forEach { (date, events) ->
-                        stickyHeader {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(StrongBackground)
-                                    .padding(16.dp, 8.dp)
+                // ── EVENTS TAB ──
+                if (exploreTab == ExploreTab.Events) {
+                    // 1. Featured Events Carousel
+                    if (uiState.featuredEvents.isNotEmpty()) {
+                        item {
+                            SectionHeaderWithAction(
+                                title = "Featured Events",
+                                onSeeAllClick = { }
+                            )
+                        }
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                Text(
-                                    formatDateHeader(date),
-                                    color = Color.Gray,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
+                                items(uiState.featuredEvents) { event ->
+                                    InteractiveEventCard(
+                                        event = event,
+                                        onClick = { onNavigateToEvent(event.id) }
+                                    )
+                                }
                             }
                         }
-                        items(events) { event ->
-                            CompactEventCard(
-                                event = event,
-                                onClick = { onNavigateToEvent(event.id) }
+                    }
+
+                    // Category Filter
+                    if (uiState.categories.isNotEmpty()) {
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(uiState.categories) { category ->
+                                    FilterChip(
+                                        selected = uiState.selectedCategory?.id == category.id,
+                                        onClick = { viewModel.selectCategory(category) },
+                                        label = { Text(category.name) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = StrongBlue,
+                                            labelColor = Color.White,
+                                            selectedLabelColor = Color.White
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Upcoming Events (grouped by date) / Empty State
+                    if (uiState.upcomingEvents.isEmpty() && !uiState.isLoading) {
+                        item {
+                            Spacer(modifier = Modifier.height(40.dp))
+                            ExploreEmptyEventsView(
+                                isLoading = uiState.isSubscribing,
+                                onNotifyMe = { viewModel.subscribeToEventNotifications() }
                             )
+                        }
+                    } else {
+                        val dateKeys = uiState.sortedDateKeys.ifEmpty {
+                            uiState.upcomingEvents.keys.sorted()
+                        }
+                        dateKeys.forEach { date ->
+                            stickyHeader {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(StrongBackground)
+                                        .padding(16.dp, 8.dp)
+                                ) {
+                                    Text(
+                                        formatDateHeader(date),
+                                        color = Color.Gray,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+                            uiState.upcomingEvents[date]?.let { events ->
+                                items(events) { event ->
+                                    CompactEventCard(
+                                        event = event,
+                                        onClick = { onNavigateToEvent(event.id) }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+
+        // ── Close PullToRefreshBox content ──
+        }
+
+        // ── Floating City Header ──
+        ExploreCityHeader(
+            selectedCity = uiState.selectedCity,
+            userLocationCity = uiState.userLocationCity,
+            onCityTap = { showCityPicker = true },
+            onSearchTap = onNavigateToMap,
+            onMapTap = onNavigateToMap,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(StrongSecondaryBackground.copy(alpha = 0.95f))
+                .statusBarsPadding()
+        )
+
+    }
+
+    // ── City Picker Sheet ──
+    if (showCityPicker) {
+        CityPickerSheet(
+            selectedCity = uiState.selectedCity,
+            cities = uiState.cities,
+            currentCityName = uiState.userLocationCity,
+            onCitySelected = { city ->
+                viewModel.selectCity(city)
+                showCityPicker = false
+            },
+            onDismiss = { showCityPicker = false }
+        )
     }
 }
+
+// ── Shared Card Composables ──
 
 @Composable
 fun SectionHeaderWithAction(title: String, onSeeAllClick: () -> Unit) {
@@ -228,6 +384,14 @@ fun SectionHeaderWithAction(title: String, onSeeAllClick: () -> Unit) {
 }
 
 @Composable
+fun HStack(
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit
+) {
+    Row(modifier = modifier, content = content)
+}
+
+@Composable
 fun InteractiveTrainerCard(trainer: TrainerSummary, onClick: () -> Unit) {
     Card(
         modifier = Modifier
@@ -238,7 +402,6 @@ fun InteractiveTrainerCard(trainer: TrainerSummary, onClick: () -> Unit) {
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column {
-            // Profile Image with gradient overlay
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -252,8 +415,7 @@ fun InteractiveTrainerCard(trainer: TrainerSummary, onClick: () -> Unit) {
                         .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
                     contentScale = ContentScale.Crop
                 )
-                
-                // Gradient overlay
+
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -268,7 +430,6 @@ fun InteractiveTrainerCard(trainer: TrainerSummary, onClick: () -> Unit) {
                         )
                 )
 
-                // Rating badge
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -292,7 +453,6 @@ fun InteractiveTrainerCard(trainer: TrainerSummary, onClick: () -> Unit) {
                     )
                 }
 
-                // Verified badge
                 if (trainer.username != null) {
                     Box(
                         modifier = Modifier
@@ -311,7 +471,6 @@ fun InteractiveTrainerCard(trainer: TrainerSummary, onClick: () -> Unit) {
                 }
             }
 
-            // Trainer Info
             Column(modifier = Modifier.padding(12.dp)) {
                 Text(
                     trainer.name,
@@ -329,8 +488,6 @@ fun InteractiveTrainerCard(trainer: TrainerSummary, onClick: () -> Unit) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                
-                // Show first certification if available
                 trainer.profile?.certifications?.let { certs ->
                     if (certs.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -366,22 +523,17 @@ fun InteractiveEventCard(event: ExploreEvent, onClick: () -> Unit) {
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
-            
-            // Gradient overlay
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color.Black.copy(alpha = 0.7f)
-                            )
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
                         )
                     )
             )
 
-            // Price badge
             event.priceDisplay?.let { price ->
                 Box(
                     modifier = Modifier
@@ -390,16 +542,10 @@ fun InteractiveEventCard(event: ExploreEvent, onClick: () -> Unit) {
                         .background(StrongGreen, RoundedCornerShape(8.dp))
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    Text(
-                        price,
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text(price, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
-            // Event info
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -415,58 +561,27 @@ fun InteractiveEventCard(event: ExploreEvent, onClick: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.8f),
-                        modifier = Modifier.size(12.dp)
-                    )
+                    Icon(Icons.Default.LocationOn, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(12.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        event.locationName,
-                        color = Color.White.copy(alpha = 0.8f),
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Text(event.locationName, color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Schedule,
-                        contentDescription = null,
-                        tint = StrongBlue,
-                        modifier = Modifier.size(12.dp)
-                    )
+                    Icon(Icons.Default.Schedule, null, tint = StrongBlue, modifier = Modifier.size(12.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        formatEventDateTime(event.startTime),
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Text(formatEventDateTime(event.startTime), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
             }
 
-            //spots left
             if (event.spotsLeft > 0) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(12.dp)
-                        .background(
-                            if (event.isNearCapacity == true) StrongRed else Color.Black.copy(alpha = 0.6f),
-                            RoundedCornerShape(6.dp)
-                        )
+                        .background(if (event.isNearCapacity == true) StrongRed else Color.Black.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text(
-                        "${event.spotsLeft} spots left",
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Text("${event.spotsLeft} spots left", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -483,68 +598,31 @@ fun CompactEventCard(event: ExploreEvent, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = StrongSecondaryBackground),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(
                 model = event.imageUrl,
                 contentDescription = null,
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(RoundedCornerShape(8.dp)),
+                modifier = Modifier.size(80.dp).clip(RoundedCornerShape(8.dp)),
                 contentScale = ContentScale.Crop
             )
-            
             Spacer(modifier = Modifier.width(12.dp))
-            
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = event.title,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    fontSize = 14.sp
-                )
+                Text(event.title, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 2, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = event.locationName,
-                    color = Color.Gray,
-                    fontSize = 12.sp,
-                    maxLines = 1
-                )
+                Text(event.locationName, color = Color.Gray, fontSize = 12.sp, maxLines = 1)
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Schedule,
-                        contentDescription = null,
-                        tint = StrongBlue,
-                        modifier = Modifier.size(14.dp)
-                    )
+                    Icon(Icons.Default.Schedule, null, tint = StrongBlue, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = formatEventDateTime(event.startTime),
-                        color = Color.Gray,
-                        fontSize = 12.sp
-                    )
+                    Text(formatEventDateTime(event.startTime), color = Color.Gray, fontSize = 12.sp)
                 }
             }
-            
             Column(horizontalAlignment = Alignment.End) {
                 event.priceDisplay?.let { price ->
-                    Text(
-                        text = price,
-                        color = StrongGreen,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
+                    Text(price, color = StrongGreen, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
                 if (event.spotsLeft > 0) {
-                    Text(
-                        text = "${event.spotsLeft} left",
-                        color = if (event.isNearCapacity == true) StrongRed else Color.Gray,
-                        fontSize = 10.sp
-                    )
+                    Text("${event.spotsLeft} left", color = if (event.isNearCapacity == true) StrongRed else Color.Gray, fontSize = 10.sp)
                 }
             }
         }
@@ -561,100 +639,30 @@ fun CompactTrainerCard(trainer: TrainerSummary, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = StrongSecondaryBackground),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(
                 model = trainer.profile?.profilePhotoPath,
                 contentDescription = null,
-                modifier = Modifier
-                    .size(60.dp)
-                    .clip(RoundedCornerShape(8.dp)),
+                modifier = Modifier.size(60.dp).clip(RoundedCornerShape(8.dp)),
                 contentScale = ContentScale.Crop
             )
-            
             Spacer(modifier = Modifier.width(12.dp))
-            
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = trainer.name,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    fontSize = 14.sp
-                )
+                Text(trainer.name, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, fontSize = 14.sp)
                 trainer.profile?.certifications?.split(",")?.firstOrNull()?.let {
-                    Text(
-                        text = it.trim(),
-                        color = Color.Gray,
-                        fontSize = 12.sp,
-                        maxLines = 1
-                    )
+                    Text(it.trim(), color = Color.Gray, fontSize = 12.sp, maxLines = 1)
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Star,
-                        contentDescription = null,
-                        tint = Color(0xFFFFD700),
-                        modifier = Modifier.size(12.dp)
-                    )
+                    Icon(Icons.Default.Star, null, tint = Color(0xFFFFD700), modifier = Modifier.size(12.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = String.format("%.1f", trainer.profile?.averageRating ?: 5.0),
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text(String.format("%.1f", trainer.profile?.averageRating ?: 5.0), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = StrongTextSecondary,
-                        modifier = Modifier.size(12.dp)
-                    )
+                    Icon(Icons.Default.LocationOn, null, tint = StrongTextSecondary, modifier = Modifier.size(12.dp))
                     Spacer(modifier = Modifier.width(2.dp))
-                    Text(
-                        text = trainer.profile?.locations?.firstOrNull()?.address ?: "Online",
-                        color = StrongTextSecondary,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Text(trainer.profile?.locations?.firstOrNull()?.address ?: "Online", color = StrongTextSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun ExploreHeader(selectedCity: ExploreCity?, onCityClick: () -> Unit, onMapClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.clickable { onCityClick() }
-        ) {
-            Icon(Icons.Default.LocationOn, contentDescription = null, tint = StrongBlue)
-            Spacer(modifier = Modifier.width(8.dp))
-            Column {
-                Text(
-                    selectedCity?.name ?: "Select City",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
-                if (selectedCity?.isCurrentLocation == true) {
-                    Text("Current Location", color = Color.Gray, fontSize = 10.sp)
-                }
-            }
-            Icon(Icons.Default.KeyboardArrowDown, null, tint = Color.Gray)
-        }
-        IconButton(onClick = onMapClick) {
-            Icon(Icons.Default.Map, null, tint = Color.White)
         }
     }
 }
@@ -662,37 +670,19 @@ fun ExploreHeader(selectedCity: ExploreCity?, onCityClick: () -> Unit, onMapClic
 @Composable
 fun EmptyStateView(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(32.dp),
+        modifier = Modifier.fillMaxWidth().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(
-            icon,
-            null,
-            modifier = Modifier.size(64.dp),
-            tint = StrongTextSecondary
-        )
+        Icon(icon, null, modifier = Modifier.size(64.dp), tint = StrongTextSecondary)
         Spacer(modifier = Modifier.height(16.dp))
         Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-        Text(
-            subtitle,
-            color = StrongTextSecondary,
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center
-        )
+        Text(subtitle, color = StrongTextSecondary, fontSize = 14.sp, textAlign = TextAlign.Center)
     }
 }
 
 @Composable
 fun SectionHeader(title: String) {
-    Text(
-        title,
-        color = Color.White,
-        fontSize = 20.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(16.dp)
-    )
+    Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
 }
 
 private fun formatDateHeader(dateStr: String): String {
@@ -703,16 +693,12 @@ private fun formatDateHeader(dateStr: String): String {
             val month = monthNames[parts[1].toInt() - 1]
             "$month ${parts[2]}, ${parts[0]}"
         } else dateStr
-    } catch (e: Exception) {
-        dateStr
-    }
+    } catch (e: Exception) { dateStr }
 }
 
 private fun formatEventDateTime(dateTime: String): String {
     return try {
         val formatted = dateTime.take(16).replace("T", " ")
         formatted.substringAfter(" ")
-    } catch (e: Exception) {
-        dateTime
-    }
+    } catch (e: Exception) { dateTime }
 }

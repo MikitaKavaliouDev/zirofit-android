@@ -10,17 +10,23 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 data class EventsUiState(
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val events: List<ExploreEvent> = emptyList(),
     val error: String? = null,
     val searchQuery: String = "",
     val selectedCategory: String? = null,
     val isFreeOnly: Boolean? = null,
     val currentPage: Int = 1,
-    val hasMore: Boolean = false
+    val hasMore: Boolean = false,
+    val sortedDateKeys: List<String> = emptyList(),
+    val groupedEvents: Map<String, List<ExploreEvent>> = emptyMap()
 )
 
 @HiltViewModel
@@ -51,10 +57,14 @@ class EventsViewModel @Inject constructor(
             )
 
             result.onSuccess { response ->
+                val mergedEvents = if (refresh) response.events else _uiState.value.events + response.events
+                val (sortedKeys, grouped) = groupEventsByDate(mergedEvents)
                 _uiState.update { state ->
                     state.copy(
                         isLoading = false,
-                        events = if (refresh) response.events else state.events + response.events,
+                        events = mergedEvents,
+                        sortedDateKeys = sortedKeys,
+                        groupedEvents = grouped,
                         hasMore = response.pagination?.hasMore ?: false,
                         currentPage = (response.pagination?.page ?: state.currentPage) + 1,
                         error = null
@@ -64,6 +74,56 @@ class EventsViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, error = error.message) }
             }
         }
+    }
+
+    fun pullToRefresh() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshing = true) }
+            val result = repository.getEvents(
+                page = 1,
+                categoryId = _uiState.value.selectedCategory,
+                search = _uiState.value.searchQuery.ifBlank { null },
+                isFree = _uiState.value.isFreeOnly
+            )
+            result.onSuccess { response ->
+                val (sortedKeys, grouped) = groupEventsByDate(response.events)
+                _uiState.update {
+                    it.copy(
+                        isRefreshing = false,
+                        events = response.events,
+                        sortedDateKeys = sortedKeys,
+                        groupedEvents = grouped,
+                        hasMore = response.pagination?.hasMore ?: false,
+                        currentPage = 2,
+                        error = null
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update { it.copy(isRefreshing = false, error = error.message) }
+            }
+        }
+    }
+
+    fun toggleFreeFilter() {
+        val newValue = if (_uiState.value.isFreeOnly == true) null else true
+        _uiState.update { it.copy(isFreeOnly = newValue) }
+        loadEvents(refresh = true)
+    }
+
+    private fun groupEventsByDate(events: List<ExploreEvent>): Pair<List<String>, Map<String, List<ExploreEvent>>> {
+        val grouped = events.groupBy { event ->
+            try {
+                ZonedDateTime.parse(event.startTime).toLocalDate().toString()
+            } catch (e: Exception) {
+                "Unknown"
+            }
+        }
+        val sortedKeys = grouped.keys.sorted()
+        return Pair(sortedKeys, grouped)
+    }
+
+    fun setSearchQuery(query: String) {
+        onSearchQueryChanged(query)
     }
 
     fun onSearchQueryChanged(query: String) {

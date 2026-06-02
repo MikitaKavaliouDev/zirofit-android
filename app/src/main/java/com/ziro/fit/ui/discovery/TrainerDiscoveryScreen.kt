@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -50,6 +51,23 @@ fun TrainerDiscoveryScreen(
         selectedSpecialty != null || selectedLocation.isNotBlank() || minRating > 0.0
     }
 
+    // Infinite scroll state
+    val listState = rememberLazyListState()
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val totalItems = layoutInfo.totalItemsCount
+            if (totalItems == 0) return@derivedStateOf false
+            val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            lastVisibleItem >= totalItems - 2 && !uiState.isLoadingMore && uiState.canLoadMore
+        }
+    }
+    LaunchedEffect(shouldLoadMore) {
+        if (shouldLoadMore) {
+            viewModel.loadMore()
+        }
+    }
+
     val headerHeight = if (hasActiveFilters) 235.dp else 200.dp
 
     Box(modifier = Modifier.fillMaxSize().background(StrongBackground)) {
@@ -63,6 +81,7 @@ fun TrainerDiscoveryScreen(
                 TrainerMapScreen(trainers = uiState.trainers, onTrainerClick = onTrainerClick)
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
                         top = headerHeight + 16.dp,
@@ -124,6 +143,45 @@ fun TrainerDiscoveryScreen(
                                     color = StrongBlue
                                 )
                             }
+                        }
+                    }
+
+                    // Load more indicator — shown when appending more pages
+                    if (uiState.isLoadingMore) {
+                        item {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                        color = StrongBlue
+                                    )
+                                    Text(
+                                        "Loading more...",
+                                        color = StrongTextSecondary,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // End-of-list marker when no more pages available
+                    if (!uiState.canLoadMore && (uiState.trainers.isNotEmpty() || uiState.events.isNotEmpty())) {
+                        item {
+                            Text(
+                                "You've seen it all",
+                                color = StrongTextSecondary,
+                                fontSize = 12.sp,
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
                         }
                     }
                 }
@@ -359,23 +417,169 @@ fun EventCardItem(event: ExploreEvent, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = StrongSecondaryBackground),
         shape = RoundedCornerShape(16.dp)
     ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier.size(70.dp).clip(RoundedCornerShape(12.dp)).background(StrongBlue.copy(alpha=0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (event.imageUrl != null) {
-                    AsyncImage(model = event.imageUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                } else {
-                    Icon(Icons.Default.Event, null, tint = StrongBlue)
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Top row: image + text info
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Image / icon box with "SELLING FAST" overlay badge
+                Box(
+                    modifier = Modifier.size(70.dp).clip(RoundedCornerShape(12.dp)).background(StrongBlue.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (event.imageUrl != null) {
+                        AsyncImage(model = event.imageUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    } else {
+                        Icon(Icons.Default.Event, null, tint = StrongBlue)
+                    }
+                    // "SELLING FAST" badge overlay on top-right of image
+                    if (event.isNearCapacity == true) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .background(
+                                    SellingFastOrange,
+                                    RoundedCornerShape(topEnd = 12.dp, bottomStart = 6.dp)
+                                )
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                "🔥 SELLING FAST",
+                                fontSize = 7.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    // Organizer type badge
+                    event.organizerType?.let { orgType ->
+                        val (badgeColor, icon) = when (orgType) {
+                            "brand" -> ExploreOrange to Icons.Default.ElectricBolt
+                            "corporate" -> ExplorePurple to Icons.Default.Business
+                            "gym" -> StrongBlue to Icons.Default.FitnessCenter
+                            else -> StrongBlue to Icons.Default.Person
+                        }
+                        Surface(
+                            color = badgeColor,
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(8.dp),
+                                    tint = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(
+                                    (event.hostName ?: event.resolvedHostName ?: "Ziro").uppercase(),
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+
+                    // Title
+                    Text(
+                        event.title,
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    // Location
+                    Text(
+                        event.locationName,
+                        color = StrongTextSecondary,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    // Time
+                    Text(
+                        event.startTime.take(16).replace("T", " "),
+                        color = StrongBlue,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    // Event highlights chips
+                    event.highlights?.take(2)?.let { hls ->
+                        if (hls.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                hls.forEach { highlight ->
+                                    Surface(
+                                        color = HighlightBlueBg,
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            highlight.uppercase(),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = StrongBlue
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(event.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text(event.locationName, color = StrongTextSecondary, fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(event.startTime.take(16).replace("T", " "), color = StrongBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+            // Capacity indicator bar
+            val enrolled = event.enrolledCount
+            val cap = event.capacity
+            if (enrolled != null && cap != null && cap > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                val ratio = enrolled.toFloat() / cap.toFloat()
+                val barColor = if (ratio > 0.8f) ExploreOrange else StrongBlue
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "${event.spotsLeft} spots left",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = StrongTextSecondary
+                        )
+                        Text(
+                            "$enrolled/$cap filled",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = StrongTextSecondary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(CapacityBarBg)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(ratio.coerceIn(0f, 1f))
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(barColor)
+                        )
+                    }
+                }
             }
         }
     }

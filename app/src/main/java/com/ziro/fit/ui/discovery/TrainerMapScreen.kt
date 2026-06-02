@@ -8,9 +8,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,10 +44,17 @@ import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
+import com.ziro.fit.model.ExploreEvent
 import com.ziro.fit.model.TrainerSummary
 import com.ziro.fit.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+enum class MapFilterMode(val label: String) {
+    ALL("All"),
+    TRAINERS("Trainers"),
+    EVENTS("Events")
+}
 
 data class TrainerCluster(
     val latitude: Double,
@@ -52,14 +62,57 @@ data class TrainerCluster(
     val trainers: List<TrainerSummary>
 )
 
+data class EventCluster(
+    val latitude: Double,
+    val longitude: Double,
+    val events: List<ExploreEvent>
+)
+
+sealed class MapSelectedItem {
+    data class TrainerCluster(val cluster: com.ziro.fit.ui.discovery.TrainerCluster) : MapSelectedItem()
+    data class EventCluster(val cluster: com.ziro.fit.ui.discovery.EventCluster) : MapSelectedItem()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrainerMapScreen(
     trainers: List<TrainerSummary>,
-    onTrainerClick: (String) -> Unit
+    onTrainerClick: (String) -> Unit,
+    events: List<ExploreEvent> = emptyList(),
+    onEventClick: (String) -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
-    val clusters = remember(trainers) {
-        trainers
+    // Filter and search state
+    var filterMode by remember { mutableStateOf(MapFilterMode.ALL) }
+    var showFilterMenu by remember { mutableStateOf(false) }
+    var showSearchBar by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedItem by remember { mutableStateOf<MapSelectedItem?>(null) }
+
+    // Filter and search applied trainer list
+    val filteredTrainers = remember(trainers, filterMode, searchQuery) {
+        if (filterMode == MapFilterMode.EVENTS) {
+            emptyList()
+        } else {
+            val query = searchQuery.trim().lowercase()
+            if (query.isBlank()) trainers
+            else trainers.filter { it.name.lowercase().contains(query) }
+        }
+    }
+
+    // Filter and search applied event list
+    val filteredEvents = remember(events, filterMode, searchQuery) {
+        if (filterMode == MapFilterMode.TRAINERS) {
+            emptyList()
+        } else {
+            val query = searchQuery.trim().lowercase()
+            if (query.isBlank()) events
+            else events.filter { it.title.lowercase().contains(query) }
+        }
+    }
+
+    val clusters = remember(filteredTrainers) {
+        filteredTrainers
             .mapNotNull { trainer ->
                 trainer.profile?.locations?.firstOrNull()?.let { location ->
                     if (location.latitude != null && location.longitude != null) {
@@ -80,12 +133,34 @@ fun TrainerMapScreen(
             }
     }
 
+    // Cluster events by location
+    val eventClusters = remember(filteredEvents) {
+        filteredEvents
+            .mapNotNull { event ->
+                event.latitude?.let { lat ->
+                    event.longitude?.let { lng ->
+                        Triple(event, lat, lng)
+                    }
+                }
+            }
+            .groupBy { (_, lat, lng) ->
+                "${lat.toBigDecimal().setScale(4, java.math.RoundingMode.HALF_UP)}_${lng.toBigDecimal().setScale(4, java.math.RoundingMode.HALF_UP)}"
+            }
+            .map { (_, items) ->
+                val first = items.first()
+                EventCluster(
+                    latitude = first.second,
+                    longitude = first.third,
+                    events = items.map { it.first }
+                )
+            }
+    }
+
     val defaultLocation = LatLng(51.5074, -0.1278)
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(defaultLocation, 12f)
     }
 
-    var selectedCluster by remember { mutableStateOf<TrainerCluster?>(null) }
     val sheetState = rememberModalBottomSheetState()
     var showBottomSheet by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -93,8 +168,8 @@ fun TrainerMapScreen(
     // Cache for marker bitmaps
     val markerBitmapCache = remember { mutableStateMapOf<String, BitmapDescriptor>() }
 
-    LaunchedEffect(selectedCluster) {
-        showBottomSheet = selectedCluster != null
+    LaunchedEffect(selectedItem) {
+        showBottomSheet = selectedItem != null
     }
 
     // Load marker bitmaps
@@ -116,7 +191,7 @@ fun TrainerMapScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize()) {
         val mapProperties = remember {
             MapProperties(mapType = MapType.NORMAL, isMyLocationEnabled = false)
         }
@@ -149,18 +224,168 @@ fun TrainerMapScreen(
                         if (cluster.trainers.size > 1) BitmapDescriptorFactory.HUE_VIOLET else BitmapDescriptorFactory.HUE_AZURE
                     ),
                     onClick = {
-                        selectedCluster = cluster
+                        selectedItem = MapSelectedItem.TrainerCluster(cluster)
+                        false
+                    }
+                )
+            }
+
+            // Event markers
+            eventClusters.forEach { cluster ->
+                val firstEvent = cluster.events.first()
+
+                Marker(
+                    state = MarkerState(position = LatLng(cluster.latitude, cluster.longitude)),
+                    title = if (cluster.events.size > 1) {
+                        "${cluster.events.size} Events"
+                    } else {
+                        firstEvent.title
+                    },
+                    snippet = firstEvent.locationName,
+                    icon = BitmapDescriptorFactory.defaultMarker(
+                        if (cluster.events.size > 1) BitmapDescriptorFactory.HUE_GREEN else BitmapDescriptorFactory.HUE_ORANGE
+                    ),
+                    onClick = {
+                        selectedItem = MapSelectedItem.EventCluster(cluster)
                         false
                     }
                 )
             }
         }
 
-        if (showBottomSheet && selectedCluster != null) {
+        // Top bar with search bar and filter controls
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(top = 48.dp, start = 16.dp, end = 16.dp)
+        ) {
+            if (showSearchBar) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = {
+                            Text("Search trainers or events...", color = StrongTextSecondary)
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = "Search", tint = StrongTextSecondary)
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.White)
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedContainerColor = StrongSecondaryBackground,
+                            unfocusedContainerColor = StrongSecondaryBackground,
+                            focusedBorderColor = StrongBlue,
+                            unfocusedBorderColor = Color.Transparent,
+                            cursorColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Filter button
+                    Box {
+                        FloatingActionButton(
+                            onClick = { showFilterMenu = true },
+                            modifier = Modifier.size(40.dp),
+                            containerColor = StrongSecondaryBackground,
+                            contentColor = Color.White
+                        ) {
+                            Icon(Icons.Default.FilterList, contentDescription = "Filter", modifier = Modifier.size(20.dp))
+                        }
+
+                        DropdownMenu(
+                            expanded = showFilterMenu,
+                            onDismissRequest = { showFilterMenu = false },
+                            containerColor = StrongSecondaryBackground
+                        ) {
+                            MapFilterMode.entries.forEach { mode ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = mode.label,
+                                            color = if (filterMode == mode) StrongBlue else Color.White,
+                                            fontWeight = if (filterMode == mode) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    onClick = {
+                                        filterMode = mode
+                                        showFilterMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Search toggle button
+                    FloatingActionButton(
+                        onClick = { showSearchBar = true },
+                        modifier = Modifier.size(40.dp),
+                        containerColor = StrongSecondaryBackground,
+                        contentColor = Color.White
+                    ) {
+                        Icon(Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(20.dp))
+                    }
+
+                    // Filter button
+                    Box {
+                        FloatingActionButton(
+                            onClick = { showFilterMenu = true },
+                            modifier = Modifier.size(40.dp),
+                            containerColor = StrongSecondaryBackground,
+                            contentColor = Color.White
+                        ) {
+                            Icon(Icons.Default.FilterList, contentDescription = "Filter", modifier = Modifier.size(20.dp))
+                        }
+
+                        DropdownMenu(
+                            expanded = showFilterMenu,
+                            onDismissRequest = { showFilterMenu = false },
+                            containerColor = StrongSecondaryBackground
+                        ) {
+                            MapFilterMode.entries.forEach { mode ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = mode.label,
+                                            color = if (filterMode == mode) StrongBlue else Color.White,
+                                            fontWeight = if (filterMode == mode) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    onClick = {
+                                        filterMode = mode
+                                        showFilterMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showBottomSheet && selectedItem != null) {
             ModalBottomSheet(
                 onDismissRequest = {
                     showBottomSheet = false
-                    selectedCluster = null
+                    selectedItem = null
                 },
                 sheetState = sheetState,
                 containerColor = StrongSecondaryBackground,
@@ -180,48 +405,226 @@ fun TrainerMapScreen(
                     }
                 }
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 32.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (selectedCluster!!.trainers.size > 1) {
-                                "${selectedCluster!!.trainers.size} Specialists"
-                            } else {
-                                "Specialist"
-                            },
-                            color = Color.White,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        IconButton(
-                            onClick = {
-                                showBottomSheet = false
-                                selectedCluster = null
-                            }
+                when (val item = selectedItem) {
+                    is MapSelectedItem.TrainerCluster -> {
+                        val cluster = item.cluster
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 32.dp)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (cluster.trainers.size > 1) {
+                                        "${cluster.trainers.size} Specialists"
+                                    } else {
+                                        "Specialist"
+                                    },
+                                    color = Color.White,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                IconButton(
+                                    onClick = {
+                                        showBottomSheet = false
+                                        selectedItem = null
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            cluster.trainers.forEach { trainer ->
+                                TrainerListItem(
+                                    trainer = trainer,
+                                    onClick = {
+                                        onTrainerClick(trainer.id)
+                                        showBottomSheet = false
+                                        selectedItem = null
+                                    }
+                                )
+                            }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    selectedCluster!!.trainers.forEach { trainer ->
-                        TrainerListItem(
-                            trainer = trainer,
-                            onClick = {
-                                onTrainerClick(trainer.id)
-                                showBottomSheet = false
-                                selectedCluster = null
+                    is MapSelectedItem.EventCluster -> {
+                        val cluster = item.cluster
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 32.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (cluster.events.size > 1) {
+                                        "${cluster.events.size} Events"
+                                    } else {
+                                        "Event"
+                                    },
+                                    color = Color.White,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                IconButton(
+                                    onClick = {
+                                        showBottomSheet = false
+                                        selectedItem = null
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                                }
                             }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            cluster.events.forEach { event ->
+                                EventMapCard(
+                                    event = event,
+                                    onClick = {
+                                        onEventClick(event.id)
+                                        showBottomSheet = false
+                                        selectedItem = null
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    null -> {}
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EventMapCard(
+    event: ExploreEvent,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = StrongBackground),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AsyncImage(
+                model = event.imageUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(60.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(StrongSecondaryBackground),
+                contentScale = ContentScale.Crop
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = event.title,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Time row
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.AccessTime,
+                        contentDescription = null,
+                        tint = StrongTextSecondary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = event.startTime.take(16).replace("T", " "),
+                        color = StrongTextSecondary,
+                        fontSize = 12.sp,
+                        maxLines = 1
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // Location row
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = StrongTextSecondary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text(
+                        text = event.locationName,
+                        color = StrongTextSecondary,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Capacity bar
+                if (event.capacity != null && event.capacity > 0) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    val fillFraction = (event.enrolledCount ?: 0).toFloat() / event.capacity.toFloat()
+                    val capacityColor = when {
+                        fillFraction >= 0.9f -> StrongRed
+                        fillFraction >= 0.7f -> ExploreOrange
+                        else -> StrongBlue
+                    }
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "${event.enrolledCount ?: 0}/${event.capacity}",
+                                color = capacityColor,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (event.spotsLeft in 1..5) {
+                                Text(
+                                    text = "Only ${event.spotsLeft} left!",
+                                    color = SellingFastOrange,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        LinearProgressIndicator(
+                            progress = { fillFraction.coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = capacityColor,
+                            trackColor = CapacityBarBg
                         )
                     }
                 }

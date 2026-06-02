@@ -6,6 +6,7 @@ import com.ziro.fit.data.repository.LiveWorkoutRepository
 import com.ziro.fit.model.Exercise
 import com.ziro.fit.model.GetExercisesResponse
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,8 +35,12 @@ class ExercisesViewModel @Inject constructor(
     private var hasMore = true
     // Keep track of the current query to know if we need to reset
     private var currentQuery: String? = null
+    private var searchJob: Job? = null
 
     fun loadExercises(query: String? = null) {
+        // Cancel any in-flight search to prevent stale responses overwriting newer ones
+        searchJob?.cancel()
+
         // If query changed, reset everything
         if (query != currentQuery) {
             currentPage = 1
@@ -59,7 +64,7 @@ class ExercisesViewModel @Inject constructor(
     }
 
     private fun fetchExercisesInternal() {
-        viewModelScope.launch {
+        searchJob = viewModelScope.launch {
             repository.getExercises(currentQuery, currentPage)
                 .onSuccess { response ->
                     val currentList = if (currentPage == 1) emptyList() else _uiState.value.exercises

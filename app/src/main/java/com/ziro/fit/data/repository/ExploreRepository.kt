@@ -5,6 +5,9 @@ import com.ziro.fit.model.ExploreEvent
 import com.ziro.fit.model.ExploreEventsResponse
 import com.ziro.fit.model.ExploreFeaturedResponse
 import com.ziro.fit.model.ExploreMetadataResponse
+import com.ziro.fit.model.PromotedTrainerSummary
+import com.ziro.fit.model.PromotedTrainersResponse
+import com.ziro.fit.model.SubscribeNotificationsRequest
 import com.ziro.fit.util.ApiErrorParser
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -130,6 +133,32 @@ class ExploreRepository @Inject constructor(
                 Result.success(Unit)
             } else {
                 Result.failure(Exception(response.message ?: "Failed to delete event"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(ApiErrorParser.getErrorMessage(ApiErrorParser.parse(e))))
+        }
+    }
+
+    suspend fun getPromotedTrainers(category: String? = null): Result<List<PromotedTrainerSummary>> {
+        return try {
+            val response = api.getPromotedTrainers(category = category)
+            if (response.data != null) {
+                Result.success(response.data.trainers)
+            } else {
+                Result.failure(Exception(response.message ?: "Failed to load promoted trainers"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(ApiErrorParser.getErrorMessage(ApiErrorParser.parse(e))))
+        }
+    }
+
+    suspend fun subscribeToNotifications(topic: String): Result<Unit> {
+        return try {
+            val response = api.subscribeToNotifications(SubscribeNotificationsRequest(topic))
+            if (response.success != false) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception(response.message ?: "Failed to subscribe to notifications"))
             }
         } catch (e: Exception) {
             Result.failure(Exception(ApiErrorParser.getErrorMessage(ApiErrorParser.parse(e))))

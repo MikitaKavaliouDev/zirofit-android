@@ -18,7 +18,8 @@ data class EventDetailUiState(
     val event: ExploreEvent? = null,
     val error: String? = null,
     val checkoutUrl: String? = null,
-    val joinSuccess: Boolean = false
+    val joinSuccess: Boolean = false,
+    val showSuccessDialog: Boolean = false
 )
 
 @HiltViewModel
@@ -56,7 +57,7 @@ class EventDetailViewModel @Inject constructor(
                 // Free event
                 exploreRepository.joinFreeEvent(eventId)
                     .onSuccess {
-                        _uiState.update { it.copy(isLoading = false, joinSuccess = true) }
+                        _uiState.update { it.copy(isLoading = false, joinSuccess = true, showSuccessDialog = true) }
                     }
                     .onFailure { error ->
                         _uiState.update { it.copy(isLoading = false, error = error.message) }
@@ -80,5 +81,9 @@ class EventDetailViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    fun dismissSuccessDialog() {
+        _uiState.update { it.copy(showSuccessDialog = false) }
     }
 }

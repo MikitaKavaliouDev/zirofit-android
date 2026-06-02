@@ -35,6 +35,11 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.ziro.fit.model.Exercise
 import com.ziro.fit.ui.theme.*
+import com.ziro.fit.util.search.FuzzySearchEngine
+
+/** Normalizes a string for fuzzy matching: lowercase + strip special characters */
+private fun normalize(text: String): String =
+    text.lowercase().replace(Regex("[^a-z0-9\\s]"), "").trim()
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -55,11 +60,33 @@ fun ExerciseBrowserContent(
     val availableBodyParts = remember(exercises) { exercises.mapNotNull { it.muscleGroup }.filter { it.isNotBlank() }.distinct().sorted() }
     val availableEquipment = remember(exercises) { exercises.mapNotNull { it.equipment }.filter { it.isNotBlank() }.distinct().sorted() }
 
-    val filteredExercises = remember(exercises, selectedBodyPart, selectedEquipment) {
-        exercises.filter { ex ->
+    // Client-side fuzzy search — matches despite typos, partial words, and special characters.
+    // Strips special characters from both query and exercise names for clean matching.
+    val searchResults = remember(searchQuery, exercises) {
+        if (searchQuery.isBlank()) {
+            exercises
+        } else {
+            val normalizedQuery = normalize(searchQuery)
+            exercises.map { exercise ->
+                val normalizedName = normalize(exercise.name)
+                val score = when {
+                    normalizedName == normalizedQuery -> 4.0  // exact match
+                    normalizedName.startsWith(normalizedQuery) -> 3.0  // prefix match
+                    normalizedName.contains(normalizedQuery) -> 2.0  // substring match
+                    else -> FuzzySearchEngine.calculateSimilarity(normalizedQuery, normalizedName)
+                }
+                exercise to score
+            }.filter { it.second >= 0.3 }
+                .sortedByDescending { it.second }
+                .map { it.first }
+        }
+    }
+
+    val filteredExercises = remember(searchResults, selectedBodyPart, selectedEquipment) {
+        searchResults.filter { ex ->
             (selectedBodyPart == null || ex.muscleGroup == selectedBodyPart) &&
             (selectedEquipment == null || ex.equipment == selectedEquipment)
-        }.sortedBy { it.name }
+        }
     }
 
     val groupedExercises = remember(filteredExercises) {
@@ -90,10 +117,7 @@ fun ExerciseBrowserContent(
             // Search Bar
             OutlinedTextField(
                 value = searchQuery,
-                onValueChange = { 
-                    searchQuery = it
-                    onSearch(it) 
-                },
+                onValueChange = { searchQuery = it },
                 placeholder = { Text("Search exercises...", color = StrongTextSecondary) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = StrongTextSecondary) },
                 trailingIcon = {
