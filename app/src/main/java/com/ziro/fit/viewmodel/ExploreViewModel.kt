@@ -55,8 +55,10 @@ class ExploreViewModel @Inject constructor(
      * Track the last known lat/lng for "Current Location" queries.
      * Updated externally via [updateLocation] (e.g. from a LocationManager or screen).
      */
-    private var currentLat: Double? = null
-    private var currentLong: Double? = null
+    var currentLat: Double? = null
+        private set
+    var currentLong: Double? = null
+        private set
 
     init {
         loadMetadata()

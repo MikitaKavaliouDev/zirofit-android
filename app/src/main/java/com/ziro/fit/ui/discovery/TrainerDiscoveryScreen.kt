@@ -34,7 +34,9 @@ import com.ziro.fit.viewmodel.TrainerDiscoveryViewModel
 fun TrainerDiscoveryScreen(
     onNavigateBack: () -> Unit,
     onTrainerClick: (String) -> Unit,
-    viewModel: TrainerDiscoveryViewModel = hiltViewModel()
+    viewModel: TrainerDiscoveryViewModel = hiltViewModel(),
+    initLat: Double? = null,
+    initLng: Double? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     
@@ -78,7 +80,12 @@ fun TrainerDiscoveryScreen(
                     color = StrongBlue
                 )
             } else if (isMapView) {
-                TrainerMapScreen(trainers = uiState.trainers, onTrainerClick = onTrainerClick)
+                TrainerMapScreen(
+                    trainers = uiState.trainers,
+                    onTrainerClick = onTrainerClick,
+                    initLat = initLat,
+                    initLng = initLng
+                )
             } else {
                 LazyColumn(
                     state = listState,

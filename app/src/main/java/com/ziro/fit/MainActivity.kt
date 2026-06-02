@@ -66,7 +66,7 @@ import com.ziro.fit.viewmodel.AuthState
 import com.ziro.fit.viewmodel.AuthViewModel
 import com.ziro.fit.viewmodel.UserViewModel
 import com.ziro.fit.viewmodel.WorkoutViewModel
-
+import com.ziro.fit.viewmodel.ExploreViewModel
 
 import com.ziro.fit.service.GlobalChatManager
 import com.ziro.fit.auth.GoogleAuthManager
@@ -490,17 +490,23 @@ fun ClientAppScreen(
                     )
                 }
                 composable(
-                    route = "trainer_discovery?specialty={specialty}&location={location}",
+                    route = "trainer_discovery?specialty={specialty}&location={location}&lat={lat}&lng={lng}",
                     arguments = listOf(
-                        navArgument("specialty") { type = NavType.StringType; nullable = true },
-                        navArgument("location") { type = NavType.StringType; nullable = true }
+                        navArgument("specialty") { type = NavType.StringType; nullable = true; defaultValue = null },
+                        navArgument("location") { type = NavType.StringType; nullable = true; defaultValue = null },
+                        navArgument("lat") { type = NavType.StringType; nullable = true; defaultValue = null },
+                        navArgument("lng") { type = NavType.StringType; nullable = true; defaultValue = null }
                     )
                 ) { backStackEntry ->
                     val specialty = backStackEntry.arguments?.getString("specialty")
                     val location = backStackEntry.arguments?.getString("location")
+                    val initLat = backStackEntry.arguments?.getString("lat")?.toDoubleOrNull()
+                    val initLng = backStackEntry.arguments?.getString("lng")?.toDoubleOrNull()
                     com.ziro.fit.ui.discovery.TrainerDiscoveryScreen(
                         onNavigateBack = { navController.popBackStack() },
-                        onTrainerClick = { trainerId -> navController.navigate("trainer_profile/$trainerId") }
+                        onTrainerClick = { trainerId -> navController.navigate("trainer_profile/$trainerId") },
+                        initLat = initLat,
+                        initLng = initLng
                     )
                 }
                 composable("ai_coach") {
@@ -574,6 +580,7 @@ fun ClientAppScreen(
                     }
                 }
                 composable("explore") {
+                    val exploreViewModel: ExploreViewModel = hiltViewModel()
                     ExploreScreen(
                         onNavigateToEvent = { eventId ->
                             navController.navigate("event_detail/$eventId")
@@ -582,8 +589,13 @@ fun ClientAppScreen(
                             navController.navigate("trainer_profile/$trainerId")
                         },
                         onNavigateToMap = {
-                            navController.navigate("trainer_discovery")
-                        }
+                            val lat = exploreViewModel.currentLat
+                            val lng = exploreViewModel.currentLong
+                            val latArg = lat?.toString() ?: ""
+                            val lngArg = lng?.toString() ?: ""
+                            navController.navigate("trainer_discovery?lat=$latArg&lng=$lngArg")
+                        },
+                        viewModel = exploreViewModel
                     )
                 }
 
@@ -592,12 +604,6 @@ fun ClientAppScreen(
                     EventDetailScreen(
                         eventId = eventId,
                         onBack = { navController.popBackStack() }
-                    )
-                }
-                composable("trainer_discovery") {
-                    com.ziro.fit.ui.discovery.TrainerDiscoveryScreen(
-                        onNavigateBack = { navController.popBackStack() },
-                        onTrainerClick = { trainerId -> navController.navigate("trainer_profile/$trainerId") }
                     )
                 }
                 composable(

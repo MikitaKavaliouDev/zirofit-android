@@ -6,7 +6,6 @@ plugins {
     alias(libs.plugins.kotlin.kapt)
     alias(libs.plugins.hilt.android)
     alias(libs.plugins.google.services)
-    id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
 }
 
 android {
@@ -24,9 +23,6 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Provide a default empty placeholder so the manifest merger doesn't crash 
-        // if the API key is missing from local.properties
-        manifestPlaceholders["MAPS_API_KEY"] = ""
     }
 
     buildTypes {
@@ -65,11 +61,6 @@ android {
             excludes += "META-INF/LGPL2.1"
         }
     }
-}
-
-secrets {
-    // Configure the plugin to read from local.properties
-    propertiesFileName = "local.properties"
 }
 
 dependencies {
@@ -127,9 +118,11 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
-    // Maps
-    implementation(libs.maps.compose)
-    implementation(libs.play.services.maps)
+    // MapLibre (Open-source map SDK, no API key required)
+    implementation("org.maplibre.gl:android-sdk:11.5.2")
+
+    // Location
+    implementation(libs.play.services.location)
 
     // Supabase
 

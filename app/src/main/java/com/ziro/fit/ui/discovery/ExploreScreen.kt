@@ -29,6 +29,21 @@ import com.ziro.fit.ui.discovery.components.*
 import com.ziro.fit.ui.theme.*
 import com.ziro.fit.viewmodel.ExploreViewModel
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Geocoder
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import com.google.android.gms.location.LocationServices
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.Locale
+import kotlin.coroutines.resume
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExploreScreen(
@@ -41,6 +56,41 @@ fun ExploreScreen(
 
     var showCityPicker by remember { mutableStateOf(false) }
     var exploreTab by remember { mutableStateOf(ExploreTab.Trainers) }
+
+    // ── Location permission + device location ──
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (fineGranted || coarseGranted) {
+            scope.launch { fetchDeviceLocation(context, viewModel) }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val permissionsToRequest = mutableListOf<String>()
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            }
+        }
+        if (permissionsToRequest.isNotEmpty()) {
+            locationPermissionLauncher.launch(permissionsToRequest.toTypedArray())
+        } else {
+            fetchDeviceLocation(context, viewModel)
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -701,4 +751,30 @@ private fun formatEventDateTime(dateTime: String): String {
         val formatted = dateTime.take(16).replace("T", " ")
         formatted.substringAfter(" ")
     } catch (e: Exception) { dateTime }
+}
+
+/**
+ * Fetches the device's last known location via FusedLocationProviderClient.
+ * On success, passes lat/lng + reverse-geocoded city name to [ExploreViewModel.updateLocation].
+ * Safe to call even without location permission — silently returns on [SecurityException].
+ */
+private suspend fun fetchDeviceLocation(context: Context, viewModel: ExploreViewModel) {
+    try {
+        val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+        val location = suspendCancellableCoroutine<android.location.Location?> { cont ->
+            fusedLocationClient.lastLocation
+                .addOnSuccessListener { cont.resume(it) }
+                .addOnFailureListener { cont.resume(null) }
+        }
+        if (location != null) {
+            val geocoder = Geocoder(context, Locale.getDefault())
+            val addresses = try {
+                geocoder.getFromLocation(location.latitude, location.longitude, 1)
+            } catch (e: Exception) { null }
+            val cityName = addresses?.firstOrNull()?.locality
+            viewModel.updateLocation(location.latitude, location.longitude, cityName)
+        }
+    } catch (_: SecurityException) {
+        // Permission was revoked after check — silently ignore
+    }
 }

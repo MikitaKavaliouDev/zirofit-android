@@ -10,9 +10,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.camera.CameraPosition
+import com.ziro.fit.ui.components.maps.MapLibreMap as MapLibreMapView
 
 @Composable
 fun LocationPickerDialog(
@@ -26,15 +27,22 @@ fun LocationPickerDialog(
         initialLongitude ?: -0.1278
     )
 
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(defaultLocation, 12f)
-    }
-
+    var mapInstance by remember { mutableStateOf<MapLibreMap?>(null) }
     var selectedLocation by remember { mutableStateOf<LatLng?>(null) }
     var selectedAddress by remember { mutableStateOf("") }
+    var markerRef by remember { mutableStateOf<org.maplibre.android.annotations.Marker?>(null) }
 
     fun reverseGeocode(latLng: LatLng) {
         selectedAddress = "${latLng.latitude}, ${latLng.longitude}"
+    }
+
+    fun updateMarker(latLng: LatLng) {
+        markerRef?.remove()
+        markerRef = mapInstance?.addMarker(
+            org.maplibre.android.annotations.MarkerOptions()
+                .position(latLng)
+                .title("Selected Location")
+        )
     }
 
     Dialog(
@@ -65,33 +73,22 @@ fun LocationPickerDialog(
                 }
 
                 Box(modifier = Modifier.weight(1f)) {
-                    val mapProperties = remember {
-                        MapProperties(mapType = MapType.NORMAL)
-                    }
-                    val mapUiSettings = remember {
-                        MapUiSettings(
-                            zoomControlsEnabled = true,
-                            myLocationButtonEnabled = false
-                        )
-                    }
-
-                    GoogleMap(
+                    MapLibreMapView(
                         modifier = Modifier.fillMaxSize(),
-                        cameraPositionState = cameraPositionState,
-                        properties = mapProperties,
-                        uiSettings = mapUiSettings,
+                        styleUrl = "https://demotiles.maplibre.org/style.json",
+                        onMapReady = { map ->
+                            mapInstance = map
+                            map.cameraPosition = CameraPosition.Builder()
+                                .target(defaultLocation)
+                                .zoom(12.0)
+                                .build()
+                        },
                         onMapClick = { latLng ->
                             selectedLocation = latLng
                             reverseGeocode(latLng)
+                            updateMarker(latLng)
                         }
-                    ) {
-                        selectedLocation?.let { location ->
-                            Marker(
-                                state = MarkerState(position = location),
-                                title = "Selected Location"
-                            )
-                        }
-                    }
+                    )
                 }
 
                 Column(

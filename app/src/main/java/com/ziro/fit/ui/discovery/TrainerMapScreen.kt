@@ -1,7 +1,13 @@
 package com.ziro.fit.ui.discovery
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -28,26 +34,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.SuccessResult
-import com.google.android.gms.maps.model.BitmapDescriptor
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.MapType
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
-import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.tasks.CancellationTokenSource
+import kotlinx.coroutines.tasks.await
+import org.maplibre.android.annotations.IconFactory
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.maps.MapLibreMap
+import com.ziro.fit.ui.components.maps.MapLibreMap as MapLibreMapView
 import com.ziro.fit.model.ExploreEvent
 import com.ziro.fit.model.TrainerSummary
 import com.ziro.fit.ui.theme.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 enum class MapFilterMode(val label: String) {
@@ -80,7 +85,9 @@ fun TrainerMapScreen(
     onTrainerClick: (String) -> Unit,
     events: List<ExploreEvent> = emptyList(),
     onEventClick: (String) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    initLat: Double? = null,
+    initLng: Double? = null
 ) {
     // Filter and search state
     var filterMode by remember { mutableStateOf(MapFilterMode.ALL) }
@@ -156,17 +163,67 @@ fun TrainerMapScreen(
             }
     }
 
-    val defaultLocation = LatLng(51.5074, -0.1278)
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(defaultLocation, 12f)
+    val defaultLocation = if (initLat != null && initLng != null) {
+        LatLng(initLat, initLng)
+    } else {
+        LatLng(51.5074, -0.1278) // London fallback
     }
-
+    var mapInstance by remember { mutableStateOf<MapLibreMap?>(null) }
     val sheetState = rememberModalBottomSheetState()
     var showBottomSheet by remember { mutableStateOf(false) }
+
+    // ── Device location for initial camera ──
+    var deviceLocation by remember { mutableStateOf<LatLng?>(
+        if (initLat != null && initLng != null) LatLng(initLat, initLng) else null
+    ) }
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        ) {
+            scope.launch { fetchLastLocation(context)?.let { deviceLocation = it } }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        // Skip location fetch if already got location from Explore tab
+        if (deviceLocation != null) return@LaunchedEffect
+
+        val permissionsToRequest = mutableListOf<String>()
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        if (Build.VERSION.SDK_INT >= 31) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            }
+        }
+        if (permissionsToRequest.isNotEmpty()) {
+            locationPermissionLauncher.launch(permissionsToRequest.toTypedArray())
+        } else {
+            withContext(Dispatchers.IO) { fetchLastLocation(context) }?.let { deviceLocation = it }
+        }
+    }
+
+    // Animate camera — triggers on map ready AND when device location resolves
+    LaunchedEffect(mapInstance, deviceLocation) {
+        val map = mapInstance ?: return@LaunchedEffect
+        val loc = deviceLocation ?: defaultLocation
+        map.animateCamera(CameraUpdateFactory.newLatLngZoom(loc, 12.0))
+    }
+
     // Cache for marker bitmaps
-    val markerBitmapCache = remember { mutableStateMapOf<String, BitmapDescriptor>() }
+    val markerBitmapCache = remember { mutableStateMapOf<String, Bitmap>() }
+    // Map marker objects to cluster data (no tag property on MapLibre Marker)
+    val markerDataMap = remember { mutableMapOf<org.maplibre.android.annotations.Marker, Any>() }
 
     LaunchedEffect(selectedItem) {
         showBottomSheet = selectedItem != null
@@ -182,7 +239,7 @@ fun TrainerMapScreen(
                         createMarkerBitmap(context, trainer, cluster.trainers.size)
                     }
                     bitmap?.let {
-                        markerBitmapCache[trainer.id] = BitmapDescriptorFactory.fromBitmap(it)
+                        markerBitmapCache[trainer.id] = it
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -191,67 +248,88 @@ fun TrainerMapScreen(
         }
     }
 
+    // Helper to create a colored circle bitmap for fallback/event markers
+    fun createColoredMarkerBitmap(color: Int): Bitmap {
+        val size = 40
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = android.graphics.Paint().apply {
+            this.color = color
+            isAntiAlias = true
+        }
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+        return bitmap
+    }
+
+    // Re-add markers when map, clusters, or cache changes
+    LaunchedEffect(mapInstance, clusters, eventClusters, markerBitmapCache.keys.size) {
+        val map = mapInstance ?: return@LaunchedEffect
+        map.removeAnnotations()
+        markerDataMap.clear()
+
+        val iconFactory = IconFactory.getInstance(context)
+        val violetPin = iconFactory.fromBitmap(createColoredMarkerBitmap(android.graphics.Color.parseColor("#9C27B0")))
+        val azurePin = iconFactory.fromBitmap(createColoredMarkerBitmap(android.graphics.Color.parseColor("#4285F4")))
+        val greenPin = iconFactory.fromBitmap(createColoredMarkerBitmap(android.graphics.Color.parseColor("#34A853")))
+        val orangePin = iconFactory.fromBitmap(createColoredMarkerBitmap(android.graphics.Color.parseColor("#FF9800")))
+
+        clusters.forEach { cluster ->
+            val firstTrainer = cluster.trainers.first()
+            val bitmap = markerBitmapCache[firstTrainer.id]
+            val icon = if (bitmap != null) {
+                iconFactory.fromBitmap(bitmap)
+            } else if (cluster.trainers.size > 1) {
+                violetPin
+            } else {
+                azurePin
+            }
+
+            map.addMarker(
+                org.maplibre.android.annotations.MarkerOptions()
+                    .position(LatLng(cluster.latitude, cluster.longitude))
+                    .icon(icon)
+                    .title(if (cluster.trainers.size > 1) "${cluster.trainers.size} Trainers" else firstTrainer.name)
+                    .snippet(firstTrainer.profile?.locations?.firstOrNull()?.address)
+            )?.let { markerDataMap[it] = cluster }
+        }
+
+        eventClusters.forEach { cluster ->
+            val icon = if (cluster.events.size > 1) greenPin else orangePin
+            map.addMarker(
+                org.maplibre.android.annotations.MarkerOptions()
+                    .position(LatLng(cluster.latitude, cluster.longitude))
+                    .icon(icon)
+                    .title(if (cluster.events.size > 1) "${cluster.events.size} Events" else cluster.events.first().title)
+                    .snippet(cluster.events.first().locationName)
+            )?.let { markerDataMap[it] = cluster }
+        }
+    }
+
+    // Marker click listener (DisposableEffect for proper cleanup)
+    DisposableEffect(mapInstance) {
+        val map = mapInstance ?: return@DisposableEffect onDispose {}
+        val listener = MapLibreMap.OnMarkerClickListener { marker ->
+            val data = markerDataMap[marker]
+            when (data) {
+                is TrainerCluster -> selectedItem = MapSelectedItem.TrainerCluster(data)
+                is EventCluster -> selectedItem = MapSelectedItem.EventCluster(data)
+            }
+            true
+        }
+        map.setOnMarkerClickListener(listener)
+        onDispose {
+            map.setOnMarkerClickListener(null)
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
-        val mapProperties = remember {
-            MapProperties(mapType = MapType.NORMAL, isMyLocationEnabled = false)
-        }
-        val mapUiSettings = remember {
-            MapUiSettings(
-                zoomControlsEnabled = true,
-                myLocationButtonEnabled = false
-            )
-        }
-
-        GoogleMap(
+        MapLibreMapView(
             modifier = Modifier.fillMaxSize(),
-            cameraPositionState = cameraPositionState,
-            properties = mapProperties,
-            uiSettings = mapUiSettings
-        ) {
-            clusters.forEach { cluster ->
-                val firstTrainer = cluster.trainers.first()
-                val markerBitmap = markerBitmapCache[firstTrainer.id]
-
-                Marker(
-                    state = MarkerState(position = LatLng(cluster.latitude, cluster.longitude)),
-                    title = if (cluster.trainers.size > 1) {
-                        "${cluster.trainers.size} Trainers"
-                    } else {
-                        firstTrainer.name
-                    },
-                    snippet = firstTrainer.profile?.locations?.firstOrNull()?.address,
-                    icon = markerBitmap ?: BitmapDescriptorFactory.defaultMarker(
-                        if (cluster.trainers.size > 1) BitmapDescriptorFactory.HUE_VIOLET else BitmapDescriptorFactory.HUE_AZURE
-                    ),
-                    onClick = {
-                        selectedItem = MapSelectedItem.TrainerCluster(cluster)
-                        false
-                    }
-                )
+            styleUrl = "https://tiles.openfreemap.org/styles/liberty",
+            onMapReady = { map ->
+                mapInstance = map
             }
-
-            // Event markers
-            eventClusters.forEach { cluster ->
-                val firstEvent = cluster.events.first()
-
-                Marker(
-                    state = MarkerState(position = LatLng(cluster.latitude, cluster.longitude)),
-                    title = if (cluster.events.size > 1) {
-                        "${cluster.events.size} Events"
-                    } else {
-                        firstEvent.title
-                    },
-                    snippet = firstEvent.locationName,
-                    icon = BitmapDescriptorFactory.defaultMarker(
-                        if (cluster.events.size > 1) BitmapDescriptorFactory.HUE_GREEN else BitmapDescriptorFactory.HUE_ORANGE
-                    ),
-                    onClick = {
-                        selectedItem = MapSelectedItem.EventCluster(cluster)
-                        false
-                    }
-                )
-            }
-        }
+        )
 
         // Top bar with search bar and filter controls
         Column(
@@ -374,12 +452,11 @@ fun TrainerMapScreen(
                                         showFilterMenu = false
                                     }
                                 )
-                            }
-                        }
-                    }
                 }
             }
         }
+    }
+}
 
         if (showBottomSheet && selectedItem != null) {
             ModalBottomSheet(
@@ -506,6 +583,31 @@ fun TrainerMapScreen(
                 }
             }
         }
+    }
+}
+
+}
+
+// ── Device location helper ──
+private suspend fun fetchLastLocation(context: Context): LatLng? {
+    try {
+        val client = LocationServices.getFusedLocationProviderClient(context)
+        val location = withContext(Dispatchers.IO) {
+            if (Build.VERSION.SDK_INT >= 31) {
+                client.getCurrentLocation(
+                    android.location.Criteria.ACCURACY_FINE,
+                    CancellationTokenSource().token
+                ).await()
+            } else {
+                @Suppress("DEPRECATION")
+                client.lastLocation.await()
+            }
+        }
+        return location?.let {
+            LatLng(it.latitude, it.longitude)
+        }
+    } catch (e: Exception) {
+        return null
     }
 }
 
