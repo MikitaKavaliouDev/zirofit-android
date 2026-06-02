@@ -23,6 +23,7 @@ import com.ziro.fit.model.FinishWorkoutPayload
 import com.ziro.fit.service.SyncManager
  import com.ziro.fit.service.ActiveWorkoutService
  import com.ziro.fit.service.WorkoutStateManager
+ import com.ziro.fit.service.WorkoutRealtimeService
  import com.ziro.fit.util.VoiceFeedbackManager
  import dagger.hilt.android.lifecycle.HiltViewModel
  import kotlinx.coroutines.flow.MutableStateFlow

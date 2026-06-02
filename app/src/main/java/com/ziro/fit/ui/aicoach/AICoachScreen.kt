@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,8 +47,22 @@ fun AICoachScreen(
             TopAppBar(
                 title = { Text("AI Coach") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = {
+                        if (uiState.isLoading) viewModel.cancelGeneration()
+                        navController.popBackStack()
+                    }) {
                         Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (uiState.isLoading) {
+                        IconButton(onClick = { viewModel.cancelGeneration() }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Stop",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             )
@@ -81,7 +96,10 @@ fun AICoachScreen(
                         isLoading = uiState.isLoading,
                         error = uiState.error
                     )
-                    AICoachStep.GENERATING -> LoadingView("Designing your perfect program...")
+                    AICoachStep.GENERATING -> LoadingView(
+                        message = "Designing your perfect program...",
+                        onCancel = { viewModel.cancelGeneration() }
+                    )
                     AICoachStep.SUCCESS -> SuccessView(
                         onViewProgram = {
                             uiState.generatedProgramId?.let { onNavigateToProgram(it) }
@@ -249,7 +267,10 @@ fun MetricsInputView(
 }
 
 @Composable
-fun LoadingView(message: String) {
+fun LoadingView(
+    message: String,
+    onCancel: (() -> Unit)? = null
+) {
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
@@ -258,6 +279,24 @@ fun LoadingView(message: String) {
         CircularProgressIndicator(modifier = Modifier.size(64.dp))
         Spacer(modifier = Modifier.height(24.dp))
         Text(text = message, style = MaterialTheme.typography.titleMedium)
+        
+        if (onCancel != null) {
+            Spacer(modifier = Modifier.height(32.dp))
+            OutlinedButton(
+                onClick = onCancel,
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Cancel")
+            }
+        }
     }
 }
 

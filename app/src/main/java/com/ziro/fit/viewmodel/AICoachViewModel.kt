@@ -6,6 +6,7 @@ import com.ziro.fit.data.repository.AICoachRepository
 
 import com.ziro.fit.model.GoalSuggestion
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +42,8 @@ class AICoachViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(AICoachUiState())
     val uiState: StateFlow<AICoachUiState> = _uiState.asStateFlow()
 
+    private var generateJob: Job? = null
+
     fun onUserInputChange(input: String) {
         _uiState.update { it.copy(userInput = input, error = null) }
     }
@@ -51,7 +54,8 @@ class AICoachViewModel @Inject constructor(
 
         _uiState.update { it.copy(isLoading = true, error = null) }
 
-        viewModelScope.launch {
+        generateJob?.cancel()
+        generateJob = viewModelScope.launch {
             val result = aiCoachRepository.refineGoal(input)
             if (result.isSuccess) {
                 val data = result.getOrNull()
@@ -117,14 +121,9 @@ class AICoachViewModel @Inject constructor(
 
         _uiState.update { it.copy(isLoading = true, error = null, step = AICoachStep.GENERATING) }
 
-        viewModelScope.launch {
-            // Need clientId. Assuming we can get it from ProfileRepository or it's current user.
-            // ProfileRepository usually has getCoreInfo which returns ID? Or we assume we are the user.
-            // The API requires clientId. 
-            // I'll assume we can get the current user ID from ProfileRepository.
-            // If ProfileRepository doesn't store it locally, we might need to fetch it first.
-            // Let's check ProfileRepository. For now I'll just fetch core info to get ID.
-            
+        // Cancel any previous generation job
+        generateJob?.cancel()
+        generateJob = viewModelScope.launch {
             // Fetch current user ID to use as clientId
             val userResult = aiCoachRepository.getCurrentUserId()
             val clientId = userResult.getOrNull()
@@ -161,7 +160,24 @@ class AICoachViewModel @Inject constructor(
         }
     }
     
+    fun cancelGeneration() {
+        generateJob?.cancel()
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                step = AICoachStep.INPUT,
+                error = null,
+                generatedProgramId = null,
+                suggestions = emptyList(),
+                selectedSuggestion = null,
+                requiredMetrics = emptyList(),
+                metricValues = emptyMap()
+            )
+        }
+    }
+    
     fun reset() {
+        generateJob?.cancel()
         _uiState.value = AICoachUiState()
     }
 }

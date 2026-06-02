@@ -163,17 +163,22 @@ constructor(
             }
         }
     }
-    private suspend fun fetchAndSaveCoreInfo() {
-        try {
+    private suspend fun fetchAndSaveCoreInfo(): Boolean {
+        return try {
             val response = api.getCoreInfo()
             Logger.d("AuthViewModel", "Core info response: $response")
-            response.data?.coreInfo?.let { coreInfo ->
+            val coreInfo = response.data?.coreInfo
+            if (coreInfo != null && !coreInfo.fullName.isNullOrBlank()) {
                 userSessionManager.saveCoreInfo(coreInfo)
+                Logger.d("AuthViewModel", "Core info fetched and saved - onboarding considered complete")
+                true
+            } else {
+                Logger.d("AuthViewModel", "Core info empty or missing - onboarding still needed")
+                false
             }
         } catch (e: Exception) {
-            // Log error but don't block onboarding flow
             Logger.e("AuthViewModel", "Failed to fetch core info", e)
-
+            false
         }
     }
 
@@ -181,21 +186,23 @@ constructor(
     private suspend fun setAuthedStateForMode(user: User, mode: AppMode) {
         val role = user.role ?: "pending"
         Logger.d("AuthViewModel", "User $user")
+        var onboardingComplete = user.hasCompletedOnboarding
         if (!user.hasCompletedOnboarding) {
-            fetchAndSaveCoreInfo()
+            // Fetch core info to check if user already has profile data
+            // If core info is populated, treat onboarding as complete
+            onboardingComplete = fetchAndSaveCoreInfo()
         }
         authState =
                 AuthState.Authenticated(
                         role,
                         user.id,
-                        isOnboardingComplete = user.hasCompletedOnboarding
+                        isOnboardingComplete = onboardingComplete
                 )
         markModeAuthenticated(mode, user.id)
         syncPushToken()
-         if (user.hasCompletedOnboarding) {
-        triggerPrefetch(mode)
-    }
-      
+        if (onboardingComplete) {
+            triggerPrefetch(mode)
+        }
     }
 
     private suspend fun checkRefreshTokenAndRefreshIfNeeded(mode: AppMode): Boolean {

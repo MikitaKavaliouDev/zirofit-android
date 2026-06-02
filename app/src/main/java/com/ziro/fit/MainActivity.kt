@@ -832,7 +832,7 @@ fun MainAppScreen(authViewModel: AuthViewModel, onLogout: () -> Unit) {
                             selectedTab.value = tab
                             val route = when (tab) {
                                 TabItem.CALENDAR -> "calendar"
-                                TabItem.PROGRAMS -> "trainer_discovery"
+                                TabItem.PROGRAMS -> "trainer_home"
                                 TabItem.HOME -> "trainer_home"
                                 TabItem.CLIENTS -> "clients"
                                 TabItem.MORE -> "more"

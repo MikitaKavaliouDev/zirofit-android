@@ -43,12 +43,13 @@ class UserSessionManager @Inject constructor(
 
     fun saveCoreInfo(coreInfo: ProfileCoreInfo) {
         Logger.d("state", "saveCoreInfo called - coreInfo: $coreInfo")
+        val locationAddress = coreInfo.locations.firstOrNull()?.address
         prefs.edit().apply {
             putString(KEY_NAME, coreInfo.fullName)
-            putString(KEY_LOCATION, coreInfo.locations.firstOrNull())
+            putString(KEY_LOCATION, locationAddress)
             apply()
         }
-        Logger.d("state", "saveCoreInfo - saved name='${coreInfo.fullName}', location='${coreInfo.locations.firstOrNull()}'")
+        Logger.d("state", "saveCoreInfo - saved name='${coreInfo.fullName}', location='$locationAddress'")
     }
     
     fun clearSession() {

@@ -11,13 +11,20 @@ data class ProfileCoreInfo(
     @SerializedName("name") val fullName: String?,
     val username: String?,
     val weightUnit: String?,
-    val certifications: List<String>?,
+    val certifications: String?,
     val phone: String?,
     val specialties: List<String>,
     val trainingTypes: List<String>,
     val businessCurrency: String?,
     val aboutMe: String?,
-    val locations: List<String>
+    val locations: List<ProfileCoreLocation>
+)
+
+data class ProfileCoreLocation(
+    val id: String?,
+    val address: String?,
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 
