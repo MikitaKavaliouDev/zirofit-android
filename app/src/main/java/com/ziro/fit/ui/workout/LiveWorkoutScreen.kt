@@ -8,7 +8,6 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -142,6 +141,7 @@ fun LiveWorkoutScreen(
      var showCancelDialog by remember { mutableStateOf(false) }
      var showFinishDialog by remember { mutableStateOf(false) }
      var showUnloggedSetsDialog by remember { mutableStateOf(false) }
+     var isVoiceCoachMinimized by remember { mutableStateOf(false) }
     
     val exerciseSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     
@@ -161,16 +161,6 @@ fun LiveWorkoutScreen(
         onResult = { viewModel.onPermissionsResult() }
     )
     
-    val speechRecognizerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val data = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-            val text = data?.get(0) ?: ""
-            viewModel.parseVoiceCommand(text)
-        }
-    }
-
     // Voice Coach: RECORD_AUDIO permission
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -201,7 +191,15 @@ fun LiveWorkoutScreen(
 
     LaunchedEffect(state.activeSession, state.isLoading, state.workoutSuccessStats) {
         if (state.activeSession == null && !state.isLoading && state.workoutSuccessStats == null) {
+            isVoiceCoachMinimized = false
             onNavigateBack()
+        }
+    }
+
+    // Reset minimized state when voice coach disconnects
+    LaunchedEffect(voiceState.connectionState) {
+        if (voiceState.connectionState != VoiceCoachConnectionState.CONNECTED) {
+            isVoiceCoachMinimized = false
         }
     }
 
@@ -411,28 +409,13 @@ fun LiveWorkoutScreen(
                          else showFinishDialog = true 
                      },
                     isBlank = isBlank,
-                    onMicTap = {
-                        val intent = android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                        }
-                        speechRecognizerLauncher.launch(intent)
-                    }
-                )
-            }
-
-            // ── Voice Coach Floating Button ──
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 100.dp),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                VoiceCoachButton(
                     connectionState = voiceState.connectionState,
-                    onTap = {
-                        when (voiceState.connectionState) {
-                            VoiceCoachConnectionState.DISCONNECTED -> {
+                    onVoiceCoachTap = {
+                        when {
+                            voiceState.connectionState == VoiceCoachConnectionState.CONNECTED && isVoiceCoachMinimized -> {
+                                isVoiceCoachMinimized = false
+                            }
+                            voiceState.connectionState == VoiceCoachConnectionState.DISCONNECTED -> {
                                 if (ContextCompat.checkSelfPermission(
                                         context,
                                         Manifest.permission.RECORD_AUDIO
@@ -443,13 +426,13 @@ fun LiveWorkoutScreen(
                                     audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                 }
                             }
-                            VoiceCoachConnectionState.ERROR -> {
+                            voiceState.connectionState == VoiceCoachConnectionState.ERROR -> {
                                 voiceCoachViewModel.toggle(context as Activity)
                             }
-                            VoiceCoachConnectionState.CONNECTED -> {
+                            voiceState.connectionState == VoiceCoachConnectionState.CONNECTED -> {
                                 voiceCoachViewModel.stop()
                             }
-                            VoiceCoachConnectionState.CONNECTING -> {
+                            voiceState.connectionState == VoiceCoachConnectionState.CONNECTING -> {
                                 // No action while connecting
                             }
                         }
@@ -464,12 +447,16 @@ fun LiveWorkoutScreen(
                     .align(Alignment.BottomCenter)
             ) {
                 VoiceCoachOverlay(
-                    visible = voiceState.connectionState == VoiceCoachConnectionState.CONNECTED,
+                    visible = voiceState.connectionState == VoiceCoachConnectionState.CONNECTED && !isVoiceCoachMinimized,
                     connectionState = voiceState.connectionState,
                     agentState = voiceState.agentState,
                     audioLevel = voiceState.audioLevel,
                     messages = voiceState.messages,
-                    onDisconnect = { voiceCoachViewModel.stop() },
+                    onDisconnect = {
+                        isVoiceCoachMinimized = false
+                        voiceCoachViewModel.stop()
+                    },
+                    onMinimize = { isVoiceCoachMinimized = true },
                     onDismiss = { voiceCoachViewModel.stop() }
                 )
             }
@@ -1011,8 +998,17 @@ fun LiveWorkoutControls(
     onTogglePause: () -> Unit,
     onFinish: () -> Unit,
     isBlank: Boolean,
-    onMicTap: () -> Unit = {}
+    connectionState: VoiceCoachConnectionState = VoiceCoachConnectionState.DISCONNECTED,
+    onVoiceCoachTap: () -> Unit = {}
 ) {
+    val micColor = when (connectionState) {
+        VoiceCoachConnectionState.DISCONNECTED -> StrongBlue
+        VoiceCoachConnectionState.CONNECTING -> StrongBlue
+        VoiceCoachConnectionState.CONNECTED -> StrongRed
+        VoiceCoachConnectionState.ERROR -> Color(0xFFFF6B35)
+    }
+    val isVoiceClickable = connectionState != VoiceCoachConnectionState.CONNECTING
+
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Row(
             modifier = Modifier
@@ -1025,15 +1021,29 @@ fun LiveWorkoutControls(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Button(
-                onClick = onMicTap,
+                onClick = { if (isVoiceClickable) onVoiceCoachTap() },
                 modifier = Modifier.size(56.dp),
                 shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(containerColor = StrongBlue),
+                colors = ButtonDefaults.buttonColors(containerColor = micColor),
                 contentPadding = PaddingValues(0.dp)
             ) {
-                Icon(Icons.Default.Mic, contentDescription = null, tint = Color.White)
+                when (connectionState) {
+                    VoiceCoachConnectionState.CONNECTING -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            color = Color.White,
+                            strokeWidth = 2.5.dp
+                        )
+                    }
+                    VoiceCoachConnectionState.CONNECTED -> {
+                        Icon(Icons.Default.MicOff, contentDescription = "Disconnect coach", tint = Color.White)
+                    }
+                    else -> {
+                        Icon(Icons.Default.Mic, contentDescription = "Voice coach", tint = Color.White)
+                    }
+                }
             }
-            
+
             Button(
                 onClick = onTogglePause,
                 modifier = Modifier.weight(1f).height(56.dp),

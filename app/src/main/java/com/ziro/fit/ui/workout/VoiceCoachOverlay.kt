@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -54,7 +55,8 @@ import kotlinx.coroutines.launch
  * - Agent state indicator (listening / thinking / speaking)
  * - Waveform visualization based on audio level
  * - Conversation transcript (scrollable)
- * - Close button to disconnect
+ * - Minimize button to collapse overlay (session stays alive)
+ * - Stop button to fully disconnect the session
  */
 @Composable
 fun VoiceCoachOverlay(
@@ -64,6 +66,7 @@ fun VoiceCoachOverlay(
     audioLevel: Float,
     messages: List<VoiceMessage>,
     onDisconnect: () -> Unit,
+    onMinimize: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -109,12 +112,23 @@ fun VoiceCoachOverlay(
                     AgentStatusChip(agentState = agentState)
                 }
 
-                IconButton(onClick = onDisconnect) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Disconnect",
-                        tint = StrongTextSecondary
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Minimize button — hides overlay but keeps session alive
+                    IconButton(onClick = onMinimize) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Minimize",
+                            tint = StrongTextSecondary
+                        )
+                    }
+                    // Stop button — fully disconnects the session
+                    IconButton(onClick = onDisconnect) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Stop",
+                            tint = StrongRed
+                        )
+                    }
                 }
             }
 

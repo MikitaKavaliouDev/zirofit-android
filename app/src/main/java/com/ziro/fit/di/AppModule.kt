@@ -20,8 +20,10 @@ import kotlinx.coroutines.runBlocking
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
-//        private const val BASE_URL = "http://10.0.2.2:3321/"
- private const val BASE_URL = "https://ziro.fit/"
+    //    private const val BASE_URL = "http://10.0.2.2:3321/"
+       private const val BASE_URL = "http://127.0.0.1:3321/"
+    //    http://127.0.0.1:3321/
+//  private const val BASE_URL = "https://ziro.fit/"
     private const val TAG = "ZiroAPI"
 
     @Provides
@@ -130,11 +132,13 @@ private val rawLoggerInterceptor = Interceptor { chain ->
     fun provideSupabaseClient(): io.github.jan.supabase.SupabaseClient {
         // TODO: Move these to BuildConfig/Secrets
         return io.github.jan.supabase.createSupabaseClient(
-            supabaseUrl = "https://pcrbmawiyzmqjvccozff.supabase.co",
-            supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjcmJtYXdpeXptcWp2Y2NvemZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk2NDEwNzgsImV4cCI6MjA2NTIxNzA3OH0.etL_dgCTbZI765Gr9M3wGZDJjlCuhE2-CvPYZXKVU08"
+                    //    supabaseUrl = "http://10.0.2.2:54321",
+                        supabaseUrl = "http://127.0.0.1:54321",
+           supabaseKey = "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH"
+            // supabaseUrl = "https://pcrbmawiyzmqjvccozff.supabase.co",
+            // supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjcmJtYXdpeXptcWp2Y2NvemZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk2NDEwNzgsImV4cCI6MjA2NTIxNzA3OH0.etL_dgCTbZI765Gr9M3wGZDJjlCuhE2-CvPYZXKVU08"
         ) {
-//            supabaseUrl = "http://10.0.2.2:54321",
-//            supabaseKey = "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH"
+
             install(io.github.jan.supabase.realtime.Realtime)
         }
     }

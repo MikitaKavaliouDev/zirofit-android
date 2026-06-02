@@ -14,8 +14,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,7 +41,10 @@ class VoiceCoachService @Inject constructor(
 ) {
     companion object {
         /** ElevenLabs Conversational AI Agent ID */
-        private const val AGENT_ID = "agent_3501ksjc2xtnemsbkta6xfm7hg7x"
+        // private const val AGENT_ID = "agent_3501ksjc2xtnemsbkta6xfm7hg7x"
+        //   dev agent: agent_3901ksj8q6s0ejwrgzt8a1j1jw3r
+          private const val AGENT_ID = "agent_3901ksj8q6s0ejwrgzt8a1j1jw3r"
+        
     }
 
     // ── Published State ──────────────────────────────────────────────
@@ -142,9 +147,12 @@ class VoiceCoachService @Inject constructor(
         )
 
         // startSession is a suspend function — launch in coroutine scope
+        // with a timeout to prevent hanging on invalid agent IDs or network issues
         connectJob = scope.launch {
             try {
-                val newSession = ConversationClient.startSession(config, activity)
+                val newSession = withTimeout(30_000L) {
+                    ConversationClient.startSession(config, activity)
+                }
                 session = newSession
                 // Reactively observe SDK StateFlows for any state changes
                 // not covered by callbacks above
@@ -176,6 +184,9 @@ class VoiceCoachService @Inject constructor(
                         _audioLevel.value = level
                     }
                 }
+            } catch (e: TimeoutCancellationException) {
+                _connectionState.value = VoiceCoachConnectionState.ERROR
+                session = null
             } catch (e: Exception) {
                 _connectionState.value = VoiceCoachConnectionState.ERROR
                 session = null
@@ -190,10 +201,13 @@ class VoiceCoachService @Inject constructor(
         connectJob = null
         observeJob?.cancel()
         observeJob = null
-        scope.launch {
-            session?.endSession()
-        }
+        // Capture session reference BEFORE nulling it, so the async
+        // endSession() call actually reaches the ElevenLabs server.
+        val currentSession = session
         session = null
+        scope.launch {
+            currentSession?.endSession()
+        }
         _connectionState.value = VoiceCoachConnectionState.DISCONNECTED
         _agentState.value = VoiceCoachAgentState.UNKNOWN
         _audioLevel.value = 0.0f
