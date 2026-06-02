@@ -96,6 +96,16 @@ fun TrainerMapScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedItem by remember { mutableStateOf<MapSelectedItem?>(null) }
 
+    // Zoom-dependent cluster precision — lower zoom = coarser grouping
+    var clusterZoom by remember { mutableStateOf(4.0) }
+    fun clusterDecimals(zoom: Double): Int = when {
+        zoom < 8 -> 2   // ~1.1km — country view
+        zoom < 10 -> 3  // ~111m — city view
+        zoom < 13 -> 4  // ~11m — neighbourhood view
+        zoom < 16 -> 5  // ~1m — street view
+        else -> 6       // exact coordinates — building view
+    }
+
     // Filter and search applied trainer list
     val filteredTrainers = remember(trainers, filterMode, searchQuery) {
         if (filterMode == MapFilterMode.EVENTS) {
@@ -118,7 +128,8 @@ fun TrainerMapScreen(
         }
     }
 
-    val clusters = remember(filteredTrainers) {
+    val clusters = remember(filteredTrainers, clusterZoom) {
+        val decimals = clusterDecimals(clusterZoom)
         filteredTrainers
             .mapNotNull { trainer ->
                 trainer.profile?.locations?.firstOrNull()?.let { location ->
@@ -128,7 +139,8 @@ fun TrainerMapScreen(
                 }
             }
             .groupBy { (_, lat, lng) ->
-                "${lat.toBigDecimal().setScale(4, java.math.RoundingMode.HALF_UP)}_${lng.toBigDecimal().setScale(4, java.math.RoundingMode.HALF_UP)}"
+                lat.toBigDecimal().setScale(decimals, java.math.RoundingMode.HALF_UP).toString() + "_" +
+                lng.toBigDecimal().setScale(decimals, java.math.RoundingMode.HALF_UP).toString()
             }
             .map { (_, items) ->
                 val first = items.first()
@@ -140,8 +152,9 @@ fun TrainerMapScreen(
             }
     }
 
-    // Cluster events by location
-    val eventClusters = remember(filteredEvents) {
+    // Group events by location (zoom-dependent)
+    val eventClusters = remember(filteredEvents, clusterZoom) {
+        val decimals = clusterDecimals(clusterZoom)
         filteredEvents
             .mapNotNull { event ->
                 event.latitude?.let { lat ->
@@ -151,7 +164,8 @@ fun TrainerMapScreen(
                 }
             }
             .groupBy { (_, lat, lng) ->
-                "${lat.toBigDecimal().setScale(4, java.math.RoundingMode.HALF_UP)}_${lng.toBigDecimal().setScale(4, java.math.RoundingMode.HALF_UP)}"
+                lat.toBigDecimal().setScale(decimals, java.math.RoundingMode.HALF_UP).toString() + "_" +
+                lng.toBigDecimal().setScale(decimals, java.math.RoundingMode.HALF_UP).toString()
             }
             .map { (_, items) ->
                 val first = items.first()
@@ -248,30 +262,65 @@ fun TrainerMapScreen(
         }
     }
 
-    // Helper to create a colored circle bitmap for fallback/event markers
-    fun createColoredMarkerBitmap(color: Int): Bitmap {
-        val size = 40
+    // ── Professional cluster / single pin bitmaps ──
+
+    /** Creates a cluster pin with count badge (for 2+ items at same location) */
+    fun createClusterPinBitmap(count: Int, fillColor: Int): Bitmap {
+        val size = 56
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val paint = android.graphics.Paint().apply {
-            this.color = color
+
+        val outerRingPaint = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; isAntiAlias = true }
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, outerRingPaint)
+
+        val innerPaint = android.graphics.Paint().apply { color = fillColor; isAntiAlias = true }
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f - 3f, innerPaint)
+
+        val textPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 22f
+            isFakeBoldText = true
+            textAlign = android.graphics.Paint.Align.CENTER
             isAntiAlias = true
         }
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+        val baseline = size / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
+        canvas.drawText("$count", size / 2f, baseline, textPaint)
         return bitmap
     }
 
-    // Re-add markers when map, clusters, or cache changes
-    LaunchedEffect(mapInstance, clusters, eventClusters, markerBitmapCache.keys.size) {
+    /** Creates a single teardrop pin (for 1 item) */
+    fun createSinglePinBitmap(fillColor: Int): Bitmap {
+        val size = 40
+        val bitmap = Bitmap.createBitmap(size, size + 6, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val pinPath = android.graphics.Path().apply {
+            val cx = size / 2f
+            val r = size / 2f - 2f
+            addCircle(cx, cx, r, android.graphics.Path.Direction.CW)
+            moveTo(cx - r * 0.3f, size - 2f)
+            lineTo(cx, size + 4f)
+            lineTo(cx + r * 0.3f, size - 2f)
+            close()
+        }
+        val fillPaint = android.graphics.Paint().apply { color = fillColor; isAntiAlias = true }
+        canvas.drawPath(pinPath, fillPaint)
+
+        val dotPaint = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; isAntiAlias = true }
+        canvas.drawCircle(size / 2f, size / 2f - 2f, 5f, dotPaint)
+        return bitmap
+    }
+
+    // Re-add markers when map, clusters, zoom, or cache changes
+    LaunchedEffect(mapInstance, clusters, eventClusters, clusterZoom, markerBitmapCache.keys.size) {
         val map = mapInstance ?: return@LaunchedEffect
         map.removeAnnotations()
         markerDataMap.clear()
 
         val iconFactory = IconFactory.getInstance(context)
-        val violetPin = iconFactory.fromBitmap(createColoredMarkerBitmap(android.graphics.Color.parseColor("#9C27B0")))
-        val azurePin = iconFactory.fromBitmap(createColoredMarkerBitmap(android.graphics.Color.parseColor("#4285F4")))
-        val greenPin = iconFactory.fromBitmap(createColoredMarkerBitmap(android.graphics.Color.parseColor("#34A853")))
-        val orangePin = iconFactory.fromBitmap(createColoredMarkerBitmap(android.graphics.Color.parseColor("#FF9800")))
+        val trainerClusterPin = iconFactory.fromBitmap(createClusterPinBitmap(2, android.graphics.Color.parseColor("#4285F4")))
+        val trainerSinglePin = iconFactory.fromBitmap(createSinglePinBitmap(android.graphics.Color.parseColor("#4285F4")))
+        val eventClusterPin = iconFactory.fromBitmap(createClusterPinBitmap(2, android.graphics.Color.parseColor("#34A853")))
+        val eventSinglePin = iconFactory.fromBitmap(createSinglePinBitmap(android.graphics.Color.parseColor("#34A853")))
 
         clusters.forEach { cluster ->
             val firstTrainer = cluster.trainers.first()
@@ -279,22 +328,26 @@ fun TrainerMapScreen(
             val icon = if (bitmap != null) {
                 iconFactory.fromBitmap(bitmap)
             } else if (cluster.trainers.size > 1) {
-                violetPin
+                iconFactory.fromBitmap(createClusterPinBitmap(cluster.trainers.size, android.graphics.Color.parseColor("#4285F4")))
             } else {
-                azurePin
+                trainerSinglePin
             }
 
             map.addMarker(
                 org.maplibre.android.annotations.MarkerOptions()
                     .position(LatLng(cluster.latitude, cluster.longitude))
                     .icon(icon)
-                    .title(if (cluster.trainers.size > 1) "${cluster.trainers.size} Trainers" else firstTrainer.name)
+                    .title(if (cluster.trainers.size > 1) "${cluster.trainers.size} Specialists" else firstTrainer.name)
                     .snippet(firstTrainer.profile?.locations?.firstOrNull()?.address)
             )?.let { markerDataMap[it] = cluster }
         }
 
         eventClusters.forEach { cluster ->
-            val icon = if (cluster.events.size > 1) greenPin else orangePin
+            val icon = if (cluster.events.size > 1) {
+                iconFactory.fromBitmap(createClusterPinBitmap(cluster.events.size, android.graphics.Color.parseColor("#34A853")))
+            } else {
+                eventSinglePin
+            }
             map.addMarker(
                 org.maplibre.android.annotations.MarkerOptions()
                     .position(LatLng(cluster.latitude, cluster.longitude))
@@ -322,12 +375,25 @@ fun TrainerMapScreen(
         }
     }
 
+    // Zoom listener — reclusters markers when zoom changes (proper cleanup)
+    DisposableEffect(mapInstance) {
+        val map = mapInstance ?: return@DisposableEffect onDispose {}
+        val listener = MapLibreMap.OnCameraIdleListener {
+            clusterZoom = map.cameraPosition.zoom
+        }
+        map.addOnCameraIdleListener(listener)
+        onDispose {
+            map.removeOnCameraIdleListener(listener)
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         MapLibreMapView(
             modifier = Modifier.fillMaxSize(),
             styleUrl = "https://tiles.openfreemap.org/styles/liberty",
             onMapReady = { map ->
                 mapInstance = map
+                clusterZoom = map.cameraPosition.zoom
             }
         )
 
@@ -485,41 +551,42 @@ fun TrainerMapScreen(
                 when (val item = selectedItem) {
                     is MapSelectedItem.TrainerCluster -> {
                         val cluster = item.cluster
-                        Column(
+                        LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(bottom = 32.dp)
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (cluster.trainers.size > 1) {
-                                        "${cluster.trainers.size} Specialists"
-                                    } else {
-                                        "Specialist"
-                                    },
-                                    color = Color.White,
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                IconButton(
-                                    onClick = {
-                                        showBottomSheet = false
-                                        selectedItem = null
-                                    }
+                            item {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                                    Text(
+                                        text = if (cluster.trainers.size > 1) {
+                                            "${cluster.trainers.size} Specialists"
+                                        } else {
+                                            "Specialist"
+                                        },
+                                        color = Color.White,
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            showBottomSheet = false
+                                            selectedItem = null
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                                    }
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            cluster.trainers.forEach { trainer ->
+                            items(cluster.trainers.size) { index ->
+                                val trainer = cluster.trainers[index]
                                 TrainerListItem(
                                     trainer = trainer,
                                     onClick = {
@@ -533,41 +600,42 @@ fun TrainerMapScreen(
                     }
                     is MapSelectedItem.EventCluster -> {
                         val cluster = item.cluster
-                        Column(
+                        LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(bottom = 32.dp)
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (cluster.events.size > 1) {
-                                        "${cluster.events.size} Events"
-                                    } else {
-                                        "Event"
-                                    },
-                                    color = Color.White,
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                IconButton(
-                                    onClick = {
-                                        showBottomSheet = false
-                                        selectedItem = null
-                                    }
+                            item {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                                    Text(
+                                        text = if (cluster.events.size > 1) {
+                                            "${cluster.events.size} Events"
+                                        } else {
+                                            "Event"
+                                        },
+                                        color = Color.White,
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            showBottomSheet = false
+                                            selectedItem = null
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                                    }
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            cluster.events.forEach { event ->
+                            items(cluster.events.size) { index ->
+                                val event = cluster.events[index]
                                 EventMapCard(
                                     event = event,
                                     onClick = {

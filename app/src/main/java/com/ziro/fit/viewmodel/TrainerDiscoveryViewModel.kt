@@ -166,9 +166,10 @@ class TrainerDiscoveryViewModel @Inject constructor(
                         t.username?.lowercase()?.contains(query) == true
                 }
                 eventsList = cachedEvents.filter { e ->
+                    val host = e.hostName ?: e.trainerName ?: e.trainer?.name
                     e.title.lowercase().contains(query) ||
                         e.locationName.lowercase().contains(query) ||
-                        e.resolvedHostName?.lowercase()?.contains(query) == true
+                        host?.lowercase()?.contains(query) == true
                 }
             }
 

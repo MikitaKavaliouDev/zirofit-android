@@ -484,7 +484,7 @@ fun EventCardItem(event: ExploreEvent, onClick: () -> Unit) {
                                 )
                                 Spacer(modifier = Modifier.width(2.dp))
                                 Text(
-                                    (event.hostName ?: event.resolvedHostName ?: "Ziro").uppercase(),
+                                    (event.hostName ?: event.trainerName ?: event.trainer?.name ?: "Ziro").uppercase(),
                                     fontSize = 8.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White

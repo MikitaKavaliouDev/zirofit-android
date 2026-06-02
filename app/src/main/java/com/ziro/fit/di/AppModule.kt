@@ -20,7 +20,7 @@ import kotlinx.coroutines.runBlocking
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
-    //    private const val BASE_URL = "http://10.0.2.2:3321/"
+//        private const val BASE_URL = "http://10.0.2.2:3321/"
        private const val BASE_URL = "http://127.0.0.1:3321/"
     //    http://127.0.0.1:3321/
 //  private const val BASE_URL = "https://ziro.fit/"
