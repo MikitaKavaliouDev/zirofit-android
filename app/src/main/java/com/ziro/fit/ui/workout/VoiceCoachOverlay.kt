@@ -1,17 +1,12 @@
 package com.ziro.fit.ui.workout
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,9 +25,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ziro.fit.model.VoiceCoachAgentState
@@ -47,6 +44,7 @@ import com.ziro.fit.ui.theme.StrongSecondaryBackground
 import com.ziro.fit.ui.theme.StrongTextPrimary
 import com.ziro.fit.ui.theme.StrongTextSecondary
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /**
  * Bottom overlay panel that appears when the voice coach session is active.
@@ -55,6 +53,7 @@ import kotlinx.coroutines.launch
  * - Agent state indicator (listening / thinking / speaking)
  * - Waveform visualization based on audio level
  * - Conversation transcript (scrollable)
+ * - Drag handle to pull down and minimize the overlay
  * - Minimize button to collapse overlay (session stays alive)
  * - Stop button to fully disconnect the session
  */
@@ -70,28 +69,89 @@ fun VoiceCoachOverlay(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+    val coroutineScope = rememberCoroutineScope()
+    val offsetFraction = remember { Animatable(if (visible) 0f else 1f) }
+    var sheetHeightPx by remember { mutableIntStateOf(0) }
+
+    // Animate when visibility changes (skip initial composition)
+    LaunchedEffect(visible) {
+        val target = if (visible) 0f else 1f
+        if (offsetFraction.value != target) {
+            if (visible) {
+                offsetFraction.animateTo(0f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+            } else {
+                offsetFraction.animateTo(1f, animationSpec = tween(300))
+            }
+        }
+    }
+
+    // Don't compose when fully hidden (avoids layout overhead)
+    if (!visible && offsetFraction.value >= 0.99f && !offsetFraction.isRunning) return
+
+    Box(
         modifier = modifier
+            .fillMaxWidth()
+            .offset { IntOffset(0, (offsetFraction.value * sheetHeightPx).roundToInt()) }
     ) {
+        @OptIn(ExperimentalMaterial3Api::class)
         Column(
             modifier = Modifier
+                .onSizeChanged { sheetHeightPx = it.height }
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(StrongSecondaryBackground)
                 .padding(bottom = 32.dp)
         ) {
-            // ── Drag Handle ──
+            // ── Drag Handle (expanded touch target) ──
             Box(
                 modifier = Modifier
-                    .padding(top = 12.dp)
-                    .size(width = 40.dp, height = 5.dp)
-                    .clip(RoundedCornerShape(2.5.dp))
-                    .background(Color.Gray.copy(alpha = 0.3f))
-                    .align(Alignment.CenterHorizontally)
-            )
+                    .padding(top = 8.dp)
+                    .fillMaxWidth()
+                    .height(32.dp)
+                    .pointerInput(visible) {
+                        if (!visible) return@pointerInput
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                coroutineScope.launch {
+                                    if (offsetFraction.value > 0.4f) {
+                                        offsetFraction.animateTo(1f, animationSpec = tween(250))
+                                        onMinimize()
+                                    } else {
+                                        offsetFraction.animateTo(
+                                            0f,
+                                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+                                        )
+                                    }
+                                }
+                            },
+                            onDragCancel = {
+                                coroutineScope.launch {
+                                    offsetFraction.animateTo(
+                                        0f,
+                                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+                                    )
+                                }
+                            }
+                        ) { change, dragAmount ->
+                            change.consume()
+                            val safeHeight = if (sheetHeightPx > 0) sheetHeightPx.toFloat() else 1f
+                            // dragAmount > 0 = finger down → increase offset (move overlay down)
+                            val newOffset = (offsetFraction.value + dragAmount / safeHeight)
+                                .coerceIn(0f, 1f)
+                            coroutineScope.launch {
+                                offsetFraction.snapTo(newOffset)
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 40.dp, height = 5.dp)
+                        .clip(RoundedCornerShape(2.5.dp))
+                        .background(Color.Gray.copy(alpha = 0.3f))
+                )
+            }
 
             // ── Header Row ──
             Row(
@@ -231,7 +291,7 @@ fun VoiceCoachOverlay(
 // ── Subcomponents ────────────────────────────────────────────────────
 
 @Composable
-private fun AgentStatusChip(agentState: VoiceCoachAgentState) {
+internal fun AgentStatusChip(agentState: VoiceCoachAgentState) {
     val (label, color) = when (agentState) {
         VoiceCoachAgentState.LISTENING -> "Listening" to StrongGreen
         VoiceCoachAgentState.THINKING -> "Thinking..." to Color(0xFFFFA500)
@@ -264,12 +324,6 @@ private fun WaveformBar(
     agentState: VoiceCoachAgentState,
     modifier: Modifier = Modifier
 ) {
-    val animatedLevel by animateFloatAsState(
-        targetValue = audioLevel,
-        animationSpec = tween(150, easing = LinearEasing),
-        label = "waveformLevel"
-    )
-
     val barCount = 40
     val color = when (agentState) {
         VoiceCoachAgentState.LISTENING -> StrongGreen
@@ -289,8 +343,8 @@ private fun WaveformBar(
     ) {
         for (i in 0 until barCount) {
             // Distribute the audio level across bars with some variation
-            val barHeight = if (animatedLevel > 0.01f) {
-                val peak = (kotlin.math.sin(i * 0.5f) * 0.5f + 0.5f) * animatedLevel * 0.8f + animatedLevel * 0.2f
+            val barHeight = if (audioLevel > 0.01f) {
+                val peak = (kotlin.math.sin(i * 0.5f) * 0.5f + 0.5f) * audioLevel * 0.8f + audioLevel * 0.2f
                 peak.coerceIn(0.05f, 1f)
             } else {
                 0.08f
@@ -358,4 +412,3 @@ private fun MicIndicator(
         )
     }
 }
-

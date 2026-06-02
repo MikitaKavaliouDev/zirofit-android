@@ -61,6 +61,7 @@ import com.ziro.fit.model.WorkoutSetUi
 import com.ziro.fit.ui.components.ExerciseBrowserContent
 import com.ziro.fit.ui.theme.*
 import com.ziro.fit.ui.workouts.WorkoutSuccessContent
+import com.ziro.fit.model.VoiceCoachAgentState
 import com.ziro.fit.model.VoiceCoachConnectionState
 import com.ziro.fit.viewmodel.VoiceTrainingViewModel
 import com.ziro.fit.viewmodel.VoiceTrainingUiState
@@ -459,6 +460,18 @@ fun LiveWorkoutScreen(
                     onMinimize = { isVoiceCoachMinimized = true },
                     onDismiss = { voiceCoachViewModel.stop() }
                 )
+
+                // Minimized bar — shown when voice coach is connected but minimized
+                if (isVoiceCoachMinimized && voiceState.connectionState == VoiceCoachConnectionState.CONNECTED) {
+                    MinimizedVoiceCoachBar(
+                        agentState = voiceState.agentState,
+                        onExpand = { isVoiceCoachMinimized = false },
+                        onDisconnect = {
+                            isVoiceCoachMinimized = false
+                            voiceCoachViewModel.stop()
+                        }
+                    )
+                }
             }
 
             // Voice Command Overlay
@@ -1062,6 +1075,104 @@ fun LiveWorkoutControls(
                 colors = ButtonDefaults.buttonColors(containerColor = if (isBlank) StrongRed.copy(alpha = 0.8f) else StrongGreen)
             ) {
                 Text(if (isBlank) "Cancel" else "Finish", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+/**
+ * A thin bar shown at the bottom of the screen when the voice coach is connected
+ * but the overlay has been minimized. Drag up on this bar to expand the overlay back.
+ */
+@Composable
+private fun MinimizedVoiceCoachBar(
+    agentState: VoiceCoachAgentState,
+    onExpand: () -> Unit,
+    onDisconnect: () -> Unit
+) {
+    val (statusLabel, statusColor) = when (agentState) {
+        VoiceCoachAgentState.LISTENING -> "Listening" to StrongGreen
+        VoiceCoachAgentState.THINKING -> "Thinking..." to Color(0xFFFFA500)
+        VoiceCoachAgentState.SPEAKING -> "Speaking" to StrongBlue
+        VoiceCoachAgentState.UNKNOWN -> "Idle" to StrongTextSecondary
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+            .background(StrongSecondaryBackground)
+            .clickable { onExpand() }
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragEnd = { },
+                    onVerticalDrag = { change, dragAmount ->
+                        // Negative dragAmount = dragging upward
+                        if (dragAmount < 0f) {
+                            change.consume()
+                            onExpand()
+                        }
+                    }
+                )
+            }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Drag handle indicator
+                Box(
+                    modifier = Modifier
+                        .width(4.dp)
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color.Gray.copy(alpha = 0.25f))
+                )
+
+                Column {
+                    Text(
+                        text = "AI Voice Coach",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = StrongTextPrimary
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(statusColor)
+                        )
+                        Text(
+                            text = statusLabel,
+                            fontSize = 11.sp,
+                            color = StrongTextSecondary
+                        )
+                    }
+                }
+            }
+
+            IconButton(
+                onClick = onDisconnect,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Stop",
+                    tint = StrongRed,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }

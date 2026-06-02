@@ -198,7 +198,7 @@ class WorkoutRealtimeService @Inject constructor(
         }
     }
 
-    private fun handleExerciseLogInsert(action: PostgresAction.Insert) {
+    private suspend fun handleExerciseLogInsert(action: PostgresAction.Insert) {
         val record = action.record
         val workoutSessionId = record["workoutSessionId"]?.toString()
         val exerciseId = record["exerciseId"]?.toString()
@@ -214,6 +214,10 @@ class WorkoutRealtimeService @Inject constructor(
                 isPR = false
             )
             _events.tryEmit(event)
+            // CRITICAL: Immediately refresh the full session so the UI
+            // picks up the new exercise log via _activeSession StateFlow.
+            // Without this, the user must wait for the polling loop (15-60s).
+            fetchFullSession()
         }
     }
 
