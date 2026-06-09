@@ -23,6 +23,16 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // Environment config — override via local.properties or CI env vars
+        val baseUrl = project.findProperty("BASE_URL") as String? ?: "http://10.0.2.2:3321"
+        buildConfigField("String", "BASE_URL", "\"$baseUrl\"")
+        val supabaseUrl = project.findProperty("SUPABASE_URL") as String? ?: "http://10.0.2.2:54321"
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        val supabaseKey = project.findProperty("SUPABASE_KEY") as String? ?: "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH"
+        buildConfigField("String", "SUPABASE_KEY", "\"$supabaseKey\"")
+        val mapStyleUrl = project.findProperty("MAP_STYLE_URL") as String? ?: "https://tiles.openfreemap.org/styles/liberty"
+        buildConfigField("String", "MAP_STYLE_URL", "\"$mapStyleUrl\"")
+
     }
 
     buildTypes {

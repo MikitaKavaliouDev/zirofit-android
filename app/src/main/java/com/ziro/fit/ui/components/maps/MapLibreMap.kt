@@ -58,6 +58,8 @@ fun rememberMapViewWithLifecycle(): MapView {
  * - "https://tiles.openfreemap.org/styles/liberty" (OpenFreeMap)
  * - Style.MAPBOX_STREETS (built-in, works offline)
  * - Style.LIGHT
+ *
+ * Override at call site: styleUrl = BuildConfig.MAP_STYLE_URL
  */
 @Composable
 fun MapLibreMap(

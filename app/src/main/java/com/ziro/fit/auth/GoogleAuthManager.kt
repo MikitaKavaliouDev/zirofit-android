@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.ziro.fit.BuildConfig
 
 data class GoogleAuthResult(
     val accessToken: String,
@@ -35,8 +36,7 @@ class GoogleAuthManager @Inject constructor(
     @ApplicationContext private val appContext: Context
 ) {
     companion object {
-        private const val BASE_URL = "http://10.0.2.2:3321"
-        private const val OAUTH_ENDPOINT = "$BASE_URL/api/auth/mobile-signin?provider=google"
+        private val OAUTH_ENDPOINT = "${BuildConfig.BASE_URL.trimEnd('/')}/api/auth/mobile-signin?provider=google"
         private const val CALLBACK_SCHEME = "zirofitapp"
         private const val CALLBACK_HOST = "auth-callback"
     }

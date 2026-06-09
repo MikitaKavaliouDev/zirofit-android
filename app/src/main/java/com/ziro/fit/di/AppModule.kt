@@ -15,15 +15,12 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import javax.inject.Singleton
 import kotlinx.coroutines.runBlocking
+import com.ziro.fit.BuildConfig
 
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
-//        private const val BASE_URL = "http://10.0.2.2:3321/"
-       private const val BASE_URL = "http://127.0.0.1:3321/"
-    //    http://127.0.0.1:3321/
-//  private const val BASE_URL = "https://ziro.fit/"
     private const val TAG = "ZiroAPI"
 
     @Provides
@@ -120,7 +117,7 @@ private val rawLoggerInterceptor = Interceptor { chain ->
             .build()
 
         return Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(BuildConfig.BASE_URL.trimEnd('/') + "/")
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
@@ -130,13 +127,9 @@ private val rawLoggerInterceptor = Interceptor { chain ->
     @Provides
     @Singleton
     fun provideSupabaseClient(): io.github.jan.supabase.SupabaseClient {
-        // TODO: Move these to BuildConfig/Secrets
         return io.github.jan.supabase.createSupabaseClient(
-                    //    supabaseUrl = "http://10.0.2.2:54321",
-                        supabaseUrl = "http://127.0.0.1:54321",
-           supabaseKey = "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH"
-            // supabaseUrl = "https://pcrbmawiyzmqjvccozff.supabase.co",
-            // supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjcmJtYXdpeXptcWp2Y2NvemZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk2NDEwNzgsImV4cCI6MjA2NTIxNzA3OH0.etL_dgCTbZI765Gr9M3wGZDJjlCuhE2-CvPYZXKVU08"
+            supabaseUrl = BuildConfig.SUPABASE_URL,
+            supabaseKey = BuildConfig.SUPABASE_KEY
         ) {
 
             install(io.github.jan.supabase.realtime.Realtime)

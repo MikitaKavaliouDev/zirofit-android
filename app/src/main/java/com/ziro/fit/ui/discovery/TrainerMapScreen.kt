@@ -47,6 +47,7 @@ import org.maplibre.android.annotations.IconFactory
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
+import com.ziro.fit.BuildConfig
 import com.ziro.fit.ui.components.maps.MapLibreMap as MapLibreMapView
 import com.ziro.fit.model.ExploreEvent
 import com.ziro.fit.model.TrainerSummary
@@ -390,7 +391,7 @@ fun TrainerMapScreen(
     Box(modifier = modifier.fillMaxSize()) {
         MapLibreMapView(
             modifier = Modifier.fillMaxSize(),
-            styleUrl = "https://tiles.openfreemap.org/styles/liberty",
+            styleUrl = BuildConfig.MAP_STYLE_URL,
             onMapReady = { map ->
                 mapInstance = map
                 clusterZoom = map.cameraPosition.zoom
