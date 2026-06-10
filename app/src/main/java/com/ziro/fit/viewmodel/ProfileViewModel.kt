@@ -27,7 +27,10 @@ data class ProfileUiState(
     val billing: ProfileBilling? = null,
     val benefits: List<Benefit> = emptyList(),
     val notifications: List<Notification> = emptyList(),
-    val bookingWindowSettings: BookingWindowSettings? = null
+    val bookingWindowSettings: BookingWindowSettings? = null,
+    val deleteAccountLoading: Boolean = false,
+    val deleteAccountError: String? = null,
+    val accountDeleted: Boolean = false
 )
 
 @HiltViewModel
@@ -238,5 +241,22 @@ class ProfileViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
         }
+    }
+
+    fun deleteAccount(onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(deleteAccountLoading = true, deleteAccountError = null) }
+            val result = repository.deleteAccount()
+            result.onSuccess {
+                _uiState.update { it.copy(deleteAccountLoading = false, accountDeleted = true) }
+                onSuccess()
+            }.onFailure { e ->
+                _uiState.update { it.copy(deleteAccountLoading = false, deleteAccountError = e.message) }
+            }
+        }
+    }
+
+    fun clearDeleteAccountError() {
+        _uiState.update { it.copy(deleteAccountError = null) }
     }
 }

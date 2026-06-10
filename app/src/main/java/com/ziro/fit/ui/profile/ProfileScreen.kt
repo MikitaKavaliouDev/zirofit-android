@@ -6,17 +6,21 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.ziro.fit.model.BookingWindowSettings
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.ziro.fit.viewmodel.ProfileViewModel
 
 data class ProfileMenuItem(
     val title: String,
@@ -31,7 +35,8 @@ fun ProfileScreen(
     onLogout: () -> Unit,
     onNavigateToSubScreen: (String) -> Unit,
     onSaveBookingSettings: ((Int, Int) -> Unit)? = null,
-    initialBookingWindowSettings: BookingWindowSettings? = null
+    initialBookingWindowSettings: BookingWindowSettings? = null,
+    viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val menuItems = listOf(
         ProfileMenuItem("Core Info", "Manage your personal details", "profile/core_info"),
@@ -122,6 +127,73 @@ fun ProfileScreen(
                             }
                         }
                     }
+                }
+            }
+
+            item {
+                val uiState = viewModel.uiState.collectAsState().value
+                var showDeleteConfirm by remember { mutableStateOf(false) }
+
+                if (showDeleteConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showDeleteConfirm = false },
+                        title = { Text("Delete Account") },
+                        text = {
+                            Text("This will permanently delete your account and all associated data. This action cannot be undone.")
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    showDeleteConfirm = false
+                                    viewModel.deleteAccount(onSuccess = onLogout)
+                                },
+                                enabled = !uiState.deleteAccountLoading
+                            ) {
+                                Text("Delete", color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDeleteConfirm = false }) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
+                }
+
+                if (uiState.deleteAccountError != null) {
+                    Text(
+                        text = uiState.deleteAccountError!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+
+                Button(
+                    onClick = { showDeleteConfirm = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    enabled = !uiState.deleteAccountLoading,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    if (uiState.deleteAccountLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onError
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Icon(
+                        Icons.Default.DeleteForever,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Delete Account")
                 }
             }
         }

@@ -523,6 +523,10 @@ interface ZiroApi {
     @retrofit2.http.DELETE("api/client/targets/{id}")
     suspend fun deleteDailyTarget(@retrofit2.http.Path("id") id: String): ApiResponse<Any>
 
+    // Account deletion
+    @HTTP(method = "DELETE", path = "api/user/delete", hasBody = false)
+    suspend fun deleteAccount(): ApiResponse<Any>
+
     // Surgical Logout
     @POST("api/auth/signout")
     suspend fun signOut(@Body request: SignOutRequest): ApiResponse<Any>

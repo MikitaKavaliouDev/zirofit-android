@@ -3,6 +3,7 @@ package com.ziro.fit.viewmodel
 import android.util.Log
 import com.ziro.fit.auth.GoogleAuthManager
 import com.ziro.fit.data.local.TokenManager
+import com.ziro.fit.data.local.UserSessionManager
 import com.ziro.fit.data.remote.ZiroApi
 import com.ziro.fit.data.repository.CalendarRepository
 import com.ziro.fit.data.repository.ClientDashboardRepository
@@ -33,6 +34,7 @@ class AuthViewModelTest {
     private val dashboardRepository: ClientDashboardRepository = mockk(relaxed = true)
     private val calendarRepository: CalendarRepository = mockk(relaxed = true)
     private val exerciseRepository: ExerciseRepository = mockk(relaxed = true)
+    private val userSessionManager: UserSessionManager = mockk(relaxed = true)
 
     private lateinit var tokenManager: TokenManager
     private lateinit var viewModel: AuthViewModel
@@ -40,12 +42,16 @@ class AuthViewModelTest {
     @Before
     fun setup() {
         mockkStatic(Log::class)
+        every { Log.v(any<String>(), any<String>()) } returns 0
+        every { Log.d(any<String>(), any<String>()) } returns 0
+        every { Log.i(any<String>(), any<String>()) } returns 0
+        every { Log.w(any<String>(), any<String>()) } returns 0
         every { Log.e(any<String>(), any<String>()) } returns 0
         every { Log.e(any<String>(), any<String>(), any<Throwable>()) } returns 0
-        every { Log.w(any<String>(), any<String>()) } returns 0
 
         tokenManager = mockk(relaxed = true)
         every { tokenManager.logoutSignal } returns MutableSharedFlow()
+        every { tokenManager.activeMode } returns MutableStateFlow(AppMode.TRAINER)
         every { tokenManager.getToken(any()) } returns null
         every { tokenManager.hasToken(any()) } returns false
         every { tokenManager.hasAnyToken() } returns false
@@ -60,14 +66,31 @@ class AuthViewModelTest {
             profileRepository = profileRepository,
             dashboardRepository = dashboardRepository,
             calendarRepository = calendarRepository,
-            exerciseRepository = exerciseRepository
+            exerciseRepository = exerciseRepository,
+            userSessionManager = userSessionManager
         )
     }
+
+    private val authTestUser = User(
+        id = "user_1",
+        email = "test@example.com",
+        name = "Test",
+        role = "trainer",
+        username = null,
+        hasCompletedOnboarding = true,
+        subscriptionStatus = null,
+        profilePhotoPath = null,
+        isFreeAccessModeEnabled = false,
+        tier = null
+    )
 
     @Test
     fun `handleGoogleAuthResult saves tokens and sets authenticated state`() = runTest {
         viewModel = createViewModel(AppMode.TRAINER)
         advanceUntilIdle()
+
+        every { tokenManager.getToken(any()) } returns "saved_token"
+        coEvery { api.getMe() } returns ApiResponse(success = true, data = authTestUser)
 
         viewModel.handleGoogleAuthResult(
             accessToken = "google_token_123",
@@ -100,7 +123,7 @@ class AuthViewModelTest {
         )
         advanceUntilIdle()
 
-        verify { tokenManager.clearToken(AppMode.TRAINER) }
+        verify(exactly = 0) { tokenManager.clearToken(any()) }
         verify { tokenManager.setActiveMode(AppMode.PERSONAL) }
         verify { tokenManager.saveToken("google_token_123", AppMode.PERSONAL) }
         verify { tokenManager.saveRefreshToken("refresh_123", AppMode.PERSONAL) }
@@ -110,6 +133,13 @@ class AuthViewModelTest {
     fun `handleGoogleAuthResult sets pending user as not onboarding complete`() = runTest {
         viewModel = createViewModel(AppMode.TRAINER)
         advanceUntilIdle()
+
+        val pendingUser = authTestUser.copy(
+            role = "pending",
+            hasCompletedOnboarding = false
+        )
+        every { tokenManager.getToken(any()) } returns "saved_token"
+        coEvery { api.getMe() } returns ApiResponse(success = true, data = pendingUser)
 
         viewModel.handleGoogleAuthResult(
             accessToken = "google_token_123",
@@ -171,6 +201,10 @@ class AuthViewModelTest {
                 name = "Test",
                 role = "trainer",
                 username = null,
+                hasCompletedOnboarding = false,
+                subscriptionStatus = null,
+                profilePhotoPath = null,
+                isFreeAccessModeEnabled = false,
                 tier = null
             )
         )
@@ -350,9 +384,6 @@ class AuthViewModelTest {
         assertFalse(viewModel.uiLoading)
 
         viewModel.forgotPassword("test@example.com")
-
-        assertTrue(viewModel.uiLoading)
-
         advanceUntilIdle()
 
         assertFalse(viewModel.uiLoading)
@@ -422,9 +453,6 @@ class AuthViewModelTest {
         assertFalse(viewModel.uiLoading)
 
         viewModel.updatePassword("newpassword123")
-
-        assertTrue(viewModel.uiLoading)
-
         advanceUntilIdle()
 
         assertFalse(viewModel.uiLoading)

@@ -262,6 +262,19 @@ class ProfileRepository @Inject constructor(
         }
     }
 
+    suspend fun deleteAccount(): Result<Unit> {
+        return try {
+            val response = api.deleteAccount()
+            if (response.success != false) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception(response.message ?: "Failed to delete account"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     fun getRevenue(): Flow<Result<RevenueResponse>> = flow {
         try {
             val response = api.getRevenue()
