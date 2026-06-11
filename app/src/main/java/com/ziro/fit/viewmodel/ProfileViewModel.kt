@@ -53,6 +53,19 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
+    fun updateCoreInfo(request: UpdateCoreInfoRequest) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            val result = repository.updateCoreInfo(request)
+            result.onSuccess {
+                _uiState.update { it.copy(isLoading = false) }
+                fetchCoreInfo() // Refresh
+            }.onFailure { e ->
+                _uiState.update { it.copy(isLoading = false, error = e.message) }
+            }
+        }
+    }
+
     fun fetchBranding() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }

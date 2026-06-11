@@ -110,6 +110,10 @@ dependencies {
     testImplementation(libs.turbine)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockwebserver)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.junit)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.androidx.compose.ui.test.manifest)
 
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -147,6 +151,9 @@ dependencies {
 
     // Browser
     implementation(libs.androidx.browser)
+
+    // QR Code
+    implementation(libs.zxing.core)
 
     // ElevenLabs Conversational AI SDK
     implementation("io.elevenlabs:elevenlabs-android:0.9.0")

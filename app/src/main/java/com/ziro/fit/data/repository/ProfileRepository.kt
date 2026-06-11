@@ -25,6 +25,19 @@ class ProfileRepository @Inject constructor(
         }
     }
 
+    suspend fun updateCoreInfo(request: UpdateCoreInfoRequest): Result<Unit> {
+        return try {
+            val response = api.updateCoreInfo(request)
+            if (response.success != false) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception(response.message ?: "Failed to update core info"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun getBranding(): Result<ProfileBranding> {
         return try {
             val response = api.getBranding()
@@ -256,6 +269,32 @@ class ProfileRepository @Inject constructor(
                 Result.success(Unit)
             } else {
                 Result.failure(Exception(response.message ?: "Failed to update working hours"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getSharingPreferences(): Result<SharingPreferences> {
+        return try {
+            val response = api.getSharingPreferences()
+            if ((response.success ?: true) && response.data != null) {
+                Result.success(response.data!!.preferences)
+            } else {
+                Result.failure(Exception(response.message ?: "Failed to fetch sharing preferences"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateSharingPreferences(preferences: SharingPreferences): Result<Unit> {
+        return try {
+            val response = api.updateSharingPreferences(preferences)
+            if (response.success != false) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception(response.message ?: "Failed to update sharing preferences"))
             }
         } catch (e: Exception) {
             Result.failure(e)

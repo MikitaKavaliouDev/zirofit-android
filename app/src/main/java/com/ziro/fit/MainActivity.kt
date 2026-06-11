@@ -696,10 +696,58 @@ fun ClientAppScreen(
                     )
                 }
                 composable("profile") {
-                    com.ziro.fit.ui.profile.ClientProfileScreen(
+                    com.ziro.fit.ui.settings.SettingsScreen(
                         currentMode = authViewModel.activeMode,
                         onModeSwitch = { authViewModel.setMode(it) },
+                        onNavigateToSubScreen = { route -> navController.navigate(route) },
                         onLogout = { authViewModel.logout() }
+                    )
+                }
+                composable("settings/data_privacy") {
+                    com.ziro.fit.ui.settings.DataPrivacyScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable("settings/notifications") {
+                    com.ziro.fit.ui.settings.NotificationPreferencesScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable("settings/appearance") {
+                    com.ziro.fit.ui.settings.AppearanceSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable("settings/language") {
+                    com.ziro.fit.ui.settings.LanguageSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable("settings/storefront") {
+                    com.ziro.fit.ui.settings.StorefrontSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToSubScreen = { route -> navController.navigate(route) }
+                    )
+                }
+                composable("settings/subscription") {
+                    com.ziro.fit.ui.settings.SubscriptionScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToBilling = { navController.navigate("profile/billing") }
+                    )
+                }
+                composable("settings/qr_code") {
+                    com.ziro.fit.ui.settings.QRScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable("settings/contact_support") {
+                    com.ziro.fit.ui.settings.ContactSupportScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable("settings/permissions") {
+                    com.ziro.fit.ui.settings.PermissionsSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() }
                     )
                 }
                 composable(
@@ -1087,15 +1135,58 @@ fun MainAppScreen(authViewModel: AuthViewModel, onLogout: () -> Unit) {
                     )
                 }
                 composable("more") {
-                    com.ziro.fit.ui.more.MoreScreen(
+                    com.ziro.fit.ui.settings.SettingsScreen(
                         currentMode = authViewModel.activeMode,
                         onModeSwitch = { authViewModel.setMode(it) },
-                        onNavigateToAssessments = { navController.navigate("assessments_library") },
-                        onNavigateToBookings = { navController.navigate("bookings_list") },
-                        onNavigateToCheckIns = { navController.navigate("checkins_list") },
-                        onNavigateToEvents = { navController.navigate("events_list") },
-                        onNavigateToMyEvents = { navController.navigate("trainer_events") },
+                        onNavigateToSubScreen = { route -> navController.navigate(route) },
                         onLogout = onLogout
+                    )
+                }
+                composable("settings/data_privacy") {
+                    com.ziro.fit.ui.settings.DataPrivacyScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable("settings/notifications") {
+                    com.ziro.fit.ui.settings.NotificationPreferencesScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable("settings/appearance") {
+                    com.ziro.fit.ui.settings.AppearanceSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable("settings/language") {
+                    com.ziro.fit.ui.settings.LanguageSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable("settings/storefront") {
+                    com.ziro.fit.ui.settings.StorefrontSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToSubScreen = { route -> navController.navigate(route) }
+                    )
+                }
+                composable("settings/subscription") {
+                    com.ziro.fit.ui.settings.SubscriptionScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToBilling = { navController.navigate("profile/billing") }
+                    )
+                }
+                composable("settings/qr_code") {
+                    com.ziro.fit.ui.settings.QRScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable("settings/contact_support") {
+                    com.ziro.fit.ui.settings.ContactSupportScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable("settings/permissions") {
+                    com.ziro.fit.ui.settings.PermissionsSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() }
                     )
                 }
                 composable("events_list") {

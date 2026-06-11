@@ -27,6 +27,19 @@ data class ProfileCoreLocation(
     val longitude: Double? = null
 )
 
+data class UpdateCoreInfoRequest(
+    @SerializedName("name") val fullName: String?,
+    val username: String?,
+    val weightUnit: String?,
+    val certifications: String?,
+    val phone: String?,
+    val specialties: List<String>,
+    val trainingTypes: List<String>,
+    val businessCurrency: String?,
+    val aboutMe: String?,
+    val locations: List<ProfileCoreLocation>
+)
+
 
 
 data class ProfileBrandingResponse(
@@ -156,4 +169,15 @@ data class RegisterPushTokenRequest(
 
 data class StripeOnboardingResponse(
     val url: String
+)
+
+data class SharingPreferences(
+    val shareWorkoutHistory: Boolean = true,
+    val shareBodyMeasurements: Boolean = false,
+    val shareCheckinNotes: Boolean = false,
+    val dataRetentionDays: Int = 365
+)
+
+data class SharingPreferencesResponse(
+    val preferences: SharingPreferences
 )

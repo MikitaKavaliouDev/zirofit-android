@@ -245,6 +245,15 @@ interface ZiroApi {
     @GET("api/profile/me/core-info")
     suspend fun getCoreInfo(): ApiResponse<ProfileCoreInfoResponse>
 
+    @retrofit2.http.PUT("api/profile/me/core-info")
+    suspend fun updateCoreInfo(@Body request: UpdateCoreInfoRequest): ApiResponse<Any>
+
+    @GET("api/client/sharing")
+    suspend fun getSharingPreferences(): ApiResponse<SharingPreferencesResponse>
+
+    @PUT("api/client/sharing")
+    suspend fun updateSharingPreferences(@Body request: SharingPreferences): ApiResponse<Any>
+
     @GET("api/profile/me/branding")
     suspend fun getBranding(): ApiResponse<ProfileBrandingResponse>
 
